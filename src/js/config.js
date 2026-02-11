@@ -5,7 +5,7 @@ import { dispDate, isColor, inRange, adjustInRange, UTIL } from './etc.js';
 import htmldata from '../html/config.txt';
 import { range_index } from './pendefine/rangeindex.js';
 // css適用
-require('../css/config.css');
+import '../css/config.css';
 
 // ショートカットキーバインド
 const objButtonFunction = [

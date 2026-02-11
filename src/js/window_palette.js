@@ -3,7 +3,7 @@
 import { ToolWindow } from './window.js';
 import htmldata from '../html/window_palette.txt';
 // css適用
-require('../css/window_palette.css');
+import '../css/window_palette.css';
 
 import { UTIL, hex2rgb } from './etc.js';
 

@@ -3,7 +3,7 @@
 import { ToolWindow } from './window.js';
 import htmldata from '../html/window_custom.txt';
 // css適用
-require('../css/window_custom.css');
+import '../css/window_custom.css';
 
 // カスタムボタンクラス
 export class CustomButtonSystem extends ToolWindow {

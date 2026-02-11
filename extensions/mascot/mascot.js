@@ -1,7 +1,7 @@
 // @description マスコット制御（Webデモページ用）
 
 // css適用
-require('./mascot.css');
+import './mascot.css';
 
 // メッセージテキスト
 import text_01 from './axptan_01.txt';

@@ -1,5 +1,6 @@
-/*
- * AXNOS Paint
+/*!
+ * AXNOS Paint for aimg
+ * (c) 2026 nijiurachan contributors
  * (c) 2022「悪の巣」部屋番号13番：「趣味の悪い大衆酒場[Mad end dance hall]」
  * Licensed under MPL 2.0
  */
@@ -12,18 +13,18 @@ import { getBrowserType, inRange, isColor } from './js/etc.js';
 // htmlデータ
 import htmldata from './html/main.txt';
 // css適用
-require('./css/axnospaint.css');
-require('./css/common.css');
-require('./css/icon.css');
-require('./css/window.css');
-require('./css/saveload.css');
-require('./css/input_range.css');
-require('./css/input_radio.css');
-require('./css/input_checkbox.css');
-require('./css/input_number.css');
-require('./css/input_button.css');
-require('./css/input_toggle.css');
-require('./css/alert.css');
+import './css/axnospaint.css';
+import './css/common.css';
+import './css/icon.css';
+import './css/window.css';
+import './css/saveload.css';
+import './css/input_range.css';
+import './css/input_radio.css';
+import './css/input_checkbox.css';
+import './css/input_number.css';
+import './css/input_button.css';
+import './css/input_toggle.css';
+import './css/alert.css';
 
 export default class {
     axpObj;

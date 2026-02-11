@@ -4,7 +4,7 @@ import { ToolWindow } from './window.js';
 import htmldata from '../html/window_layer.txt';
 import { isBlankImage, flip_horizontal, flip_vertical, dispDate } from './etc.js';
 // css適用
-require('../css/window_layer.css');
+import '../css/window_layer.css';
 
 const colorTagListDefault = [
     { name: '下描き', color: '#f33' },

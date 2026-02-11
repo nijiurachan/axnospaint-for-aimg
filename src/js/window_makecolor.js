@@ -3,13 +3,13 @@
 import { ToolWindow } from './window.js';
 import htmldata from '../html/window_makecolor.txt';
 // css適用
-require('../css/window_makecolor.css');
+import '../css/window_makecolor.css';
 
 import { hex2rgb, rgb2hex, isColor, adjustColorValue, UTIL } from './etc.js';
 
 // カラーピッカーライブラリ
 import ReinventedColorWheel from './reinvented-color-wheel.js';
-require('../css/reinvented-color-wheel.css');
+import '../css/reinvented-color-wheel.css';
 
 // カラー作成制御オブジェクト
 export class ColorMakerSystem extends ToolWindow {

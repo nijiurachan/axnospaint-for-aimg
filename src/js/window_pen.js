@@ -5,7 +5,7 @@ import html_pen from '../html/window_pen.txt';
 import html_pen_subwindow from '../html/penmode.txt';
 
 // css適用
-require('../css/window_pen.css');
+import '../css/window_pen.css';
 
 import { createTonePattern, UTIL, rgb2hex, calcDistance } from './etc.js';
 import { range_index, range_value } from './pendefine/rangeindex.js';

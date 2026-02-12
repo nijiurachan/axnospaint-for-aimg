@@ -4,7 +4,7 @@ import { ToolWindow } from './window.js';
 import htmldata from '../html/window_layer.txt';
 import { isBlankImage, flip_horizontal, flip_vertical, dispDate } from './etc.js';
 // css適用
-require('../css/window_layer.css');
+import '../css/window_layer.css';
 
 const colorTagListDefault = [
     { name: '下描き', color: '#f33' },
@@ -1354,7 +1354,7 @@ export class LayerSystem extends ToolWindow {
         this.CANVAS.backscreen_white_ctx.beginPath();
         this.CANVAS.backscreen_white_ctx.clearRect(0, 0, this.x_size, this.y_size);
         this.CANVAS.backscreen_white_ctx.globalAlpha = 1;
-        this.CANVAS.backscreen_white_ctx.fillStyle = '#ffffff';
+        this.CANVAS.backscreen_white_ctx.fillStyle = this.axpObj.defaultColor?.sub || '#FFFFFF';
         this.CANVAS.backscreen_white_ctx.fillRect(0, 0, this.x_size, this.y_size);
         this.CANVAS.backscreen_white_ctx.drawImage(this.CANVAS.backscreen_trans, 0, 0);
 

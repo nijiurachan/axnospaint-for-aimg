@@ -1,5 +1,6 @@
-/*
- * AXNOS Paint
+/*!
+ * AXNOS Paint for aimg
+ * (c) 2026 nijiurachan contributors
  * (c) 2022「悪の巣」部屋番号13番：「趣味の悪い大衆酒場[Mad end dance hall]」
  * Licensed under MPL 2.0
  */
@@ -8,22 +9,22 @@
 import { AXPObj } from './js/axpobj.js';
 import { getDictionaryJSON } from './js/lang.js';
 import { createCustomAlert } from './js/alert.js';
-import { getBrowserType, inRange } from './js/etc.js';
+import { getBrowserType, inRange, isColor } from './js/etc.js';
 // htmlデータ
 import htmldata from './html/main.txt';
 // css適用
-require('./css/axnospaint.css');
-require('./css/common.css');
-require('./css/icon.css');
-require('./css/window.css');
-require('./css/saveload.css');
-require('./css/input_range.css');
-require('./css/input_radio.css');
-require('./css/input_checkbox.css');
-require('./css/input_number.css');
-require('./css/input_button.css');
-require('./css/input_toggle.css');
-require('./css/alert.css');
+import './css/axnospaint.css';
+import './css/common.css';
+import './css/icon.css';
+import './css/window.css';
+import './css/saveload.css';
+import './css/input_range.css';
+import './css/input_radio.css';
+import './css/input_checkbox.css';
+import './css/input_number.css';
+import './css/input_button.css';
+import './css/input_toggle.css';
+import './css/alert.css';
 
 export default class {
     axpObj;
@@ -138,6 +139,26 @@ export default class {
 
             // 拡張機能タブ
             this.axpObj.expansionTab = option.expansionTab || null;
+
+            // 初期色設定
+            if (option.defaultColor) {
+                try {
+                    const { main, sub, palette } = option.defaultColor
+
+                    if (!isColor(main) || !isColor(sub) || !palette.every(isColor)) {
+                        throw Error(JSON.stringify(option.defaultColor))
+                    }
+
+                    this.axpObj.defaultColor = { main, sub, palette }
+                } catch (e) {
+                    const msg = 'ERROR:\n起動オプションdefaultColorの指定が正しくありません。';
+                    console.warn(msg, e);
+                    alert(msg);
+                    return;
+                }
+            } else {
+                this.axpObj.defaultColor = {}
+            }
 
             // 投稿フォームカスタマイズ
             let isErrorDetected = false;

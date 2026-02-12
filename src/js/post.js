@@ -3,7 +3,7 @@
 import { UTIL } from './etc.js';
 import htmldata from '../html/post.txt';
 // css適用
-require('../css/post.css');
+import '../css/post.css';
 
 // 設定機能制御オブジェクト
 export class PostSystem {

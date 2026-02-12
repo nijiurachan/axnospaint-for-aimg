@@ -45,6 +45,15 @@ export type AXNOSPaintConstructorParameters = {
     post?: (postObj: AXNOSPaintPostObject) => Promise<void>
     /** 投稿用フォームのユーザーカスタマイズ定義 */
     postForm?: AXNOSPaintPostForm
+    /** デフォルト色設定 */
+    defaultColor?: {
+        /** 前景色 (デフォルト: #000000) */
+        main: string
+        /** 背景色 (デフォルト: #FFFFFF) */
+        sub: string
+        /** 初期カラーパレット (デフォルト: 黒〜白の24色) */
+        palette: string[]
+    }
 }
 
 /** 投稿情報オブジェクト */

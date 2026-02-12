@@ -3,13 +3,13 @@
 import { ToolWindow } from './window.js';
 import htmldata from '../html/window_makecolor.txt';
 // css適用
-require('../css/window_makecolor.css');
+import '../css/window_makecolor.css';
 
 import { hex2rgb, rgb2hex, isColor, adjustColorValue, UTIL } from './etc.js';
 
 // カラーピッカーライブラリ
 import ReinventedColorWheel from './reinvented-color-wheel.js';
-require('../css/reinvented-color-wheel.css');
+import '../css/reinvented-color-wheel.css';
 
 // カラー作成制御オブジェクト
 export class ColorMakerSystem extends ToolWindow {
@@ -47,10 +47,10 @@ export class ColorMakerSystem extends ToolWindow {
         this.window_left = pos.left;
         this.window_top = pos.top;
         // メインカラー／サブカラーの初期値設定
-        document.getElementById('axp_makecolor_div_mainColor').style.backgroundColor = '#000000';
-        document.getElementById('axp_makecolor_div_subColor').style.backgroundColor = '#FFFFFF';
-        this.maincolor = "#000000";
-        this.subcolor = "#FFFFFF";
+        this.maincolor = this.axpObj.defaultColor?.main || '#000000';
+        this.subcolor = this.axpObj.defaultColor?.sub || '#FFFFFF';
+        document.getElementById('axp_makecolor_div_mainColor').style.backgroundColor = this.maincolor;
+        document.getElementById('axp_makecolor_div_subColor').style.backgroundColor = this.subcolor;
         this.createTemporaryPalette();
 
         // カラーピッカー：使用定義

@@ -4,11 +4,11 @@ import { ToolWindow } from './window.js';
 import htmldata from '../html/window_tool.txt';
 import { UTIL, adjustInRange } from './etc.js';
 // css適用
-require('../css/window_tool.css');
+import '../css/window_tool.css';
 
 // カラーピッカーライブラリ
 import ReinventedColorWheel from './reinvented-color-wheel.js';
-require('../css/reinvented-color-wheel.css');
+import '../css/reinvented-color-wheel.css';
 
 // 補助ツール制御オブジェクト
 export class AssistToolSystem extends ToolWindow {

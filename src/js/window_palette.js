@@ -3,7 +3,7 @@
 import { ToolWindow } from './window.js';
 import htmldata from '../html/window_palette.txt';
 // css適用
-require('../css/window_palette.css');
+import '../css/window_palette.css';
 
 import { UTIL, hex2rgb } from './etc.js';
 
@@ -296,7 +296,7 @@ export class ColorPaletteSystem extends ToolWindow {
     }
     setPaletteArray(array) {
         if (array === undefined) {
-            array = arrayPaletteDefault;
+            array = [...(this.axpObj.defaultColor?.palette || arrayPaletteDefault)];
             this.currentPalette.column = 3;
         }
         // パレット最大数を超過していたらエラー

@@ -4,7 +4,7 @@ import { ToolWindow } from './window.js';
 import htmldata from '../html/window_launcher.txt';
 import { UTIL } from './etc.js';
 // css適用
-require('../css/window_launcher.css');
+import '../css/window_launcher.css';
 
 // ランチャークラス
 export class Launcher extends ToolWindow {

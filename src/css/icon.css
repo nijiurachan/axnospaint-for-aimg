@@ -120,6 +120,37 @@
     height: 28px;
 }
 
+/* ヘッダー右端のアンドゥ／リドゥボタン */
+.axpc_main_headerButton {
+    width: 36px;
+    margin: 0 4px;
+    padding: 0;
+    font-size: 0;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 24px 24px;
+    position: relative;
+    flex-shrink: 0;
+}
+
+#axp_main_button_undo {
+    background-image: url('../../resource/undo.png');
+}
+
+#axp_main_button_redo {
+    background-image: url('../../resource/redo.png');
+}
+
+/* 当たり判定を横方向に拡張して 44px に届かせる（縦は据え置き） */
+.axpc_main_headerButton::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -4px;
+    right: -4px;
+}
+
 /* ハンバーガーメニュー */
 .axpc_icon_humburger,
 .axpc_icon_humburger::before,

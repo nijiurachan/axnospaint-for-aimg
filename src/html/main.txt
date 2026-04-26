@@ -14,6 +14,11 @@
 			<div data-idx="3" class="axpc_MSG" data-msg="@BAS0004"></div>
 		</div>
 		<div id="axp_main_div_headerText" class="axpc_MSG" data-msg="@BAS0005"></div>
+		<!-- ヘッダー右端のアンドゥ／リドゥボタン -->
+		<button id="axp_main_button_undo" class="axpc_FUNC axpc_button axpc_main_headerButton"
+			data-function="func_undo" data-msg="@AST0006"></button>
+		<button id="axp_main_button_redo" class="axpc_FUNC axpc_button axpc_main_headerButton"
+			data-function="func_redo" data-msg="@AST0007"></button>
 	</div>
 
 	<!-- タブにより切り替わる画面 -->

@@ -37,4 +37,9 @@
             data-msg="@LAY0007">${_("@LAYER.BUTTON_DEL")}</button>
     </div>
 </div>
-<ul id="axp_layer_ul_layerBox" class="axpc_MSG" data-msg="@LAY0008"></ul>
+<div id="axp_layer_div_layerBoxContainer">
+    <ul id="axp_layer_ul_layerBox" class="axpc_MSG" data-msg="@LAY0008"></ul>
+    <div id="axp_layer_div_scrollbar">
+        <div id="axp_layer_div_scrollThumb"></div>
+    </div>
+</div>

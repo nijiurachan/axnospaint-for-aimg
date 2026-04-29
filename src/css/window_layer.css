@@ -37,16 +37,75 @@
     margin-bottom: 4px;
 }
 
+/* レイヤーボックスコンテナ（スクロール領域） */
+#axp_layer_div_layerBoxContainer {
+    position: relative;
+    /* レイヤー8枚ぶん（1枚 = 42px content + 1px*2 border = 44px） */
+    max-height: 352px;
+    overflow: hidden;
+}
+
 /* レイヤーボックス */
 #axp_layer_ul_layerBox {
     list-style: none;
     margin: 0;
     padding: 0;
-    /* レイヤー数に応じて可変*/
-    height: 100%;
     background: rgba(0, 0, 0, 0);
     border-radius: 0 0 5px 5px;
     position: relative;
+    top: 0;
+}
+
+/* カスタムスクロールバー（レイヤー数が8を超えた時のみ表示） */
+#axp_layer_div_scrollbar {
+    display: none;
+    position: absolute;
+    top: 0;
+    right: 0;
+    /* タップ判定幅 40px */
+    width: 40px;
+    height: 100%;
+    z-index: 2;
+    /* 通常時はイベントを通過させ、レイヤー入れ替え操作と干渉しない */
+    pointer-events: none;
+}
+
+#axp_layer_div_layerBoxContainer[data-scrollable="true"] #axp_layer_div_scrollbar {
+    display: block;
+}
+
+#axp_layer_div_scrollThumb {
+    position: absolute;
+    right: 0;
+    /* 判定幅 40px */
+    width: 40px;
+    background: transparent;
+    cursor: grab;
+    /* スマホでのスクロール操作のみ受け付ける */
+    pointer-events: auto;
+    touch-action: none;
+}
+
+/* 見た目 32px のつまみ */
+#axp_layer_div_scrollThumb::after {
+    content: '';
+    position: absolute;
+    right: 4px;
+    top: 2px;
+    bottom: 2px;
+    width: 32px;
+    background: rgba(180, 180, 180, 0.6);
+    border: 1px solid rgba(0, 0, 0, 0.6);
+    border-radius: 4px;
+    pointer-events: none;
+}
+
+#axp_layer_div_scrollThumb:hover::after {
+    background: rgba(220, 220, 220, 0.8);
+}
+
+#axp_layer_div_scrollThumb:active {
+    cursor: grabbing;
 }
 
 #axp_layer_ul_layerBox li {

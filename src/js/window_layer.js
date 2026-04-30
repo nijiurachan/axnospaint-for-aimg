@@ -42,6 +42,8 @@ export class Layerdata {
         this.name = layerData.name; // レイヤー名
         this.tag = layerData.tag; // カラータグ
         this.image = layerData.image; // 画像データ（imageData）
+        // 描画スキップ用キャッシュ（true: 全画素が透明であることが既知。誤って true を設定すると描画抜けが起きるため、保守的に false 寄りに保つ）
+        this.isBlank = layerData.isBlank === true;
     }
 }
 
@@ -500,8 +502,11 @@ export class LayerSystem extends ToolWindow {
     clear(id) {
         // 引数で指定されたIDのimageDataを初期化
         // アンドゥ時に元のimagedataが必要となるため、更新ではなく新規のimagedataを作成する
-        this.layerObj[this.getLayerIndex(id)].image =
+        const idx = this.getLayerIndex(id);
+        this.layerObj[idx].image =
             this.CANVAS.tmp_ctx.createImageData(this.axpObj.x_size, this.axpObj.y_size);
+        // クリア後は空レイヤー
+        this.layerObj[idx].isBlank = true;
     }
     getLocked(index = null) {
         if (index) {
@@ -633,10 +638,16 @@ export class LayerSystem extends ToolWindow {
     }
     write(imageData) {
         // imagedataの更新
-        this.layerObj[this.getLayerIndex(this.currentLayer.dataset.id)].image = imageData;
+        const idx = this.getLayerIndex(this.currentLayer.dataset.id);
+        this.layerObj[idx].image = imageData;
+        // 内容が書き換わったため、空レイヤー扱いを解除（描画されたとみなす）
+        this.layerObj[idx].isBlank = false;
     }
     setImageId(imageData, id) {
-        this.layerObj[this.getLayerIndex(id)].image = imageData;
+        const idx = this.getLayerIndex(id);
+        this.layerObj[idx].image = imageData;
+        // 内容が書き換わったため、空レイヤー扱いを解除（保守的に false）
+        this.layerObj[idx].isBlank = false;
     }
     setName(name) {
         this.layerObj[this.getLayerIndex(this.currentLayer.dataset.id)].name = name;
@@ -786,6 +797,7 @@ export class LayerSystem extends ToolWindow {
             tag: -1,
             // 空のイメージを生成
             image: this.CANVAS.tmp_ctx.createImageData(this.axpObj.x_size, this.axpObj.y_size),
+            isBlank: true,
             // 挿入位置：カレントレイヤーの一つ上に追加
             insert_idx: this.getIndex(),
         }
@@ -815,6 +827,8 @@ export class LayerSystem extends ToolWindow {
         }
         // imageDataオブジェクトのコピー
         layerData.image.data.set(sourceObj.image.data);
+        // 複製元が空ならコピーも空
+        layerData.isBlank = sourceObj.isBlank === true;
 
         this.createLayer(layerData);
         return layerData.id;
@@ -1239,7 +1253,7 @@ export class LayerSystem extends ToolWindow {
             this.layerObj[i].index = i;
         }
     }
-    draw() {
+    draw(changedLayerId = null) {
         let ctx = this.axpObj.CANVAS.main_ctx;
         //console.log('ここで描画', this.x_size, this.y_size);
         // 表示領域をクリア
@@ -1251,6 +1265,11 @@ export class LayerSystem extends ToolWindow {
         for (let idx = this.layerObj.length - 1; idx >= 0; idx--) {
             let item = this.layerObj[idx];
 
+            // 描画スキップ条件：非表示・空レイヤー（imagedata 自体は保持されており undo/redo で変更可能）
+            const isInvisible = (!item.checked) || item.isBlank;
+            // サムネ更新対象：全更新時(null) または 変動が発生したレイヤーのみ
+            const wantThumbUpdate = (changedLayerId === null) || (item.id === changedLayerId);
+
             // imagedataを仮想キャンバスに描画
             let tmp_ctx;
             // safari
@@ -1259,16 +1278,23 @@ export class LayerSystem extends ToolWindow {
             } else {
                 tmp_ctx = this.CANVAS.tmp_ctx;
             }
-            tmp_ctx.putImageData(item.image, 0, 0);
+            // 非表示・空レイヤーは putImageData をスキップ（合成時にも不要）
+            if (!isInvisible) {
+                tmp_ctx.putImageData(item.image, 0, 0);
+            }
 
-            // レイヤー毎のサムネイル描画
-            const clearRect = Math.max(this.axpObj.x_size, this.axpObj.y_size);
-            this.CANVAS.thumbnail_ctx[idx].clearRect(0, 0, clearRect, clearRect);
-            this.CANVAS.thumbnail_ctx[idx].drawImage(
-                tmp_ctx.canvas,
-                this.axpObj.ctx_map_shift_x,
-                this.axpObj.ctx_map_shift_y
-            );
+            // レイヤー毎のサムネイル描画（変動レイヤーのみ更新）
+            if (wantThumbUpdate) {
+                const clearRect = Math.max(this.axpObj.x_size, this.axpObj.y_size);
+                this.CANVAS.thumbnail_ctx[idx].clearRect(0, 0, clearRect, clearRect);
+                if (!isInvisible) {
+                    this.CANVAS.thumbnail_ctx[idx].drawImage(
+                        tmp_ctx.canvas,
+                        this.axpObj.ctx_map_shift_x,
+                        this.axpObj.ctx_map_shift_y
+                    );
+                }
+            }
 
             // クリッピング合成により描画済みの子レイヤーの場合、処理をスキップする
             if (skipIdx < idx) {
@@ -1340,8 +1366,9 @@ export class LayerSystem extends ToolWindow {
                     }
 
                 }
-                // レイヤーが「表示」の場合、そのレイヤーをキャンバスに描画する
-                if (item.checked) {
+                // レイヤーが「表示」かつ非空の場合、そのレイヤーをキャンバスに描画する
+                // （isInvisible 時は tmp_ctx に当該レイヤーの内容を putImageData していないため drawImage 不可）
+                if (!isInvisible) {
                     //console.log('idx=', idx, this.layerObj[idx].name);
                     this.CANVAS.backscreen_trans_ctx.globalCompositeOperation = item.mode;
                     this.CANVAS.backscreen_trans_ctx.globalAlpha = item.alpha / 100;
@@ -1404,9 +1431,10 @@ export class LayerSystem extends ToolWindow {
         }
 
     }
-    updateCanvas() {
+    updateCanvas(changedLayerId = null) {
         // キャンバス更新が影響する表示を一括処理
-        this.draw();
+        // changedLayerId が指定された場合、そのレイヤーのサムネのみ更新（他レイヤーのサムネ再描画を省略）
+        this.draw(changedLayerId);
         this.drawThumbnail();
     }
     // 画像をダウンロード

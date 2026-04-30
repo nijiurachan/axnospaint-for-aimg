@@ -226,7 +226,8 @@ export class PenObj {
         this.axpObj.layerSystem.write(
             this.CANVAS.draw_ctx.getImageData(0, 0, this.axpObj.x_size, this.axpObj.y_size)
         );
-        this.axpObj.layerSystem.updateCanvas();
+        // 描画中はカレントレイヤーのみ変動するため、サムネ更新もそのレイヤーのみ
+        this.axpObj.layerSystem.updateCanvas(this.axpObj.layerSystem.getId());
     }
     // 描画終了 - 共通処理
     end_common() {

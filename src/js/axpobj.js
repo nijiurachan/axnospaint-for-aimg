@@ -628,7 +628,24 @@ export class AXPObj {
                 // 座標表示
                 document.getElementById('axp_canvas_div_pointerPosition').textContent = textDisplayPositon;
                 // 機能呼び出し
-                this.penSystem.move(pos.x, pos.y, e);
+                // フレーム落ち時の中間点欠落を防ぐため、coalescedEvents があれば全て処理する
+                // （フレーム落ちが起きないライト負荷時は要素1つのみとなり挙動は従来と同等）
+                let coalescedEvents = null;
+                if (typeof e.getCoalescedEvents === 'function') {
+                    try {
+                        coalescedEvents = e.getCoalescedEvents();
+                    } catch {
+                        coalescedEvents = null;
+                    }
+                }
+                if (coalescedEvents && coalescedEvents.length > 1) {
+                    for (const ce of coalescedEvents) {
+                        const cpos = this.calcScaleCoordinates(ce);
+                        this.penSystem.move(cpos.x, cpos.y, ce);
+                    }
+                } else {
+                    this.penSystem.move(pos.x, pos.y, e);
+                }
             }
 
             // タッチ処理

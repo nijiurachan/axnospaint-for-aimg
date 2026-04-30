@@ -96,6 +96,9 @@ export class UndoSystem {
         // アンドゥ中であることを記憶しておく（※未使用。将来拡張用フラグ）
         this.isUndoing = true;
         let msgtext = '';
+        // 変動が単一レイヤーに限定される操作の場合、サムネ更新対象IDを設定する
+        // （カレントレイヤー以外が変動する場合があるため、actionObjから取得する）
+        let changedLayerId = null;
         switch (actionObj.type) {
             case 'draw':
                 // 詳細情報に対応するテキスト取得
@@ -108,6 +111,7 @@ export class UndoSystem {
                 });
                 // アンドゥ処理
                 this.axpObj.layerSystem.setImageId(actionObj.layerObj.image, actionObj.layerObj.id);
+                changedLayerId = actionObj.layerObj.id;
                 break;
 
             case 'layer-create':
@@ -139,6 +143,7 @@ export class UndoSystem {
                 this.setRedo(actionObj);
                 // アンドゥ処理
                 this.axpObj.layerSystem.setImageId(actionObj.layerObj.image, actionObj.layerObj.id);
+                changedLayerId = actionObj.layerObj.id;
                 break;
 
             case 'layer-integrate': {
@@ -173,6 +178,7 @@ export class UndoSystem {
                     msgtext = '[左右反転:全体]';
                 } else {
                     msgtext = '[左右反転:単体]';
+                    changedLayerId = actionObj.id;
                 }
                 break;
             case 'flip_v':
@@ -184,6 +190,7 @@ export class UndoSystem {
                     msgtext = '[上下反転:全体]';
                 } else {
                     msgtext = '[上下反転:単体]';
+                    changedLayerId = actionObj.id;
                 }
                 break;
 
@@ -194,7 +201,7 @@ export class UndoSystem {
         // %1をアンドゥしました。（残り回数：%2）
         this.axpObj.msg('@INF0400', msgtext, this.undoObj.length);
         // キャンバス再描画
-        this.axpObj.layerSystem.updateCanvas();
+        this.axpObj.layerSystem.updateCanvas(changedLayerId);
         // アンドゥ／リドゥボタンの回数表示更新
         this.dispCount();
 
@@ -220,6 +227,8 @@ export class UndoSystem {
         this.isRedoing = true;
         const actionObj = this.redoObj.pop();
         let msgtext = '';
+        // 変動が単一レイヤーに限定される操作の場合、サムネ更新対象IDを設定する
+        let changedLayerId = null;
         switch (actionObj.type) {
             case 'draw':
                 // 詳細情報に対応するテキスト取得
@@ -232,6 +241,7 @@ export class UndoSystem {
                 });
                 // リドゥ処理
                 this.axpObj.layerSystem.setImageId(actionObj.layerObj.image, actionObj.layerObj.id);
+                changedLayerId = actionObj.layerObj.id;
                 break;
             case 'layer-create':
                 msgtext = '[レイヤー:新規]';
@@ -260,6 +270,7 @@ export class UndoSystem {
                 this.setUndo(actionObj);
                 // リドゥ処理
                 this.axpObj.layerSystem.clear(actionObj.layerObj.id);
+                changedLayerId = actionObj.layerObj.id;
                 break;
             case 'layer-integrate': {
                 msgtext = '[レイヤー:統合]';
@@ -290,6 +301,7 @@ export class UndoSystem {
                     msgtext = '[左右反転:全体]';
                 } else {
                     msgtext = '[左右反転:単体]';
+                    changedLayerId = actionObj.id;
                 }
                 break;
             case 'flip_v':
@@ -301,6 +313,7 @@ export class UndoSystem {
                     msgtext = '[上下反転:全体]';
                 } else {
                     msgtext = '[上下反転:単体]';
+                    changedLayerId = actionObj.id;
                 }
                 break;
             default:
@@ -310,7 +323,7 @@ export class UndoSystem {
         // %1をリドゥしました。（残り回数：%2）
         this.axpObj.msg('@INF0401', msgtext, this.redoObj.length);
         // キャンバス再描画
-        this.axpObj.layerSystem.updateCanvas();
+        this.axpObj.layerSystem.updateCanvas(changedLayerId);
         // アンドゥ／リドゥボタンの回数表示更新
         this.dispCount();
         //console.log("undo", undoObj , "redo" , redoObj);

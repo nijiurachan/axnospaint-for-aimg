@@ -194,14 +194,25 @@ export class Round extends PenObj {
         return halfWidth * cp.pressure;
     }
 
+    // サブピクセル幅 (直径 < 1px) のエミュレーション:
+    // 形状は半径 0.5 にクランプし、不透明度を真半径/0.5 で減衰させる
+    _subPxAlpha(rTrue) {
+        return (rTrue < 0.5) ? Math.max(0, rTrue) / 0.5 : 1.0;
+    }
+
     // 円スタンプ
     _drawStamp(cp) {
-        const r = this._radiusAt(cp);
-        if (r <= 0) return;
+        const rTrue = this._radiusAt(cp);
+        if (rTrue <= 0) return;
+        const r = Math.max(rTrue, 0.5);
+        const alphaScale = this._subPxAlpha(rTrue);
         const ctx = this.CANVAS.brush_ctx;
+        const saved = ctx.globalAlpha;
+        ctx.globalAlpha = saved * alphaScale;
         ctx.beginPath();
         ctx.arc(cp.x, cp.y, r, 0, Math.PI * 2);
         ctx.fill();
+        ctx.globalAlpha = saved;
     }
 
     // ２点間の塗り（半径可変の外接共通接線で構成した凸多角形）
@@ -210,8 +221,14 @@ export class Round extends PenObj {
             this._drawStamp(p2);
             return;
         }
-        const r1 = this._radiusAt(p1);
-        const r2 = this._radiusAt(p2);
+        const r1True = this._radiusAt(p1);
+        const r2True = this._radiusAt(p2);
+        // 両端ともゼロ → 何も描けない
+        if (r1True <= 0 && r2True <= 0) return;
+        // サブピクセル幅対応: 形状は >= 0.5 にクランプ、不透明度で減衰
+        const r1 = Math.max(r1True, 0.5);
+        const r2 = Math.max(r2True, 0.5);
+        const segAlpha = (this._subPxAlpha(r1True) + this._subPxAlpha(r2True)) / 2;
         const dx = p2.x - p1.x;
         const dy = p2.y - p1.y;
         const d = Math.hypot(dx, dy);
@@ -238,6 +255,8 @@ export class Round extends PenObj {
         const nLx =  uy * cosA + ux * sinA;
         const nLy =  uy * sinA - ux * cosA;
         const ctx = this.CANVAS.brush_ctx;
+        const saved = ctx.globalAlpha;
+        ctx.globalAlpha = saved * segAlpha;
         ctx.beginPath();
         ctx.moveTo(p1.x + r1 * nUx, p1.y + r1 * nUy);
         ctx.lineTo(p2.x + r2 * nUx, p2.y + r2 * nUy);
@@ -245,7 +264,8 @@ export class Round extends PenObj {
         ctx.lineTo(p1.x + r1 * nLx, p1.y + r1 * nLy);
         ctx.closePath();
         ctx.fill();
-        // 終端のキャップ円
+        ctx.globalAlpha = saved;
+        // 終端のキャップ円 (こちらは p2 自身の真半径でアルファ補正)
         this._drawStamp(p2);
     }
 

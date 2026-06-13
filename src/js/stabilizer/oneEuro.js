@@ -74,6 +74,7 @@ export class OneEuroStabilizer {
         this.prevY = null;
         this.prevFiltX = null;
         this.prevFiltY = null;
+        this.cumDist = 0; // ストローク開始からの累積距離 (筆圧 LPF の起動遅延に使用)
         this.lastCommitted = null;
         this.params = mapStabilizerToParams(0);
         this.d_cutoff = 1.0;
@@ -119,7 +120,17 @@ export class OneEuroStabilizer {
 
         // 筆圧: 空間LPF (フィルタ後の位置を基準に進行距離を測る)
         const ds = Math.hypot(xHat - this.prevFiltX, yHat - this.prevFiltY);
-        const pHat = this.pressLpf.filter(pMed, ds, this.params.pressureLambda);
+        this.cumDist += ds;
+        let pHat;
+        // ストローク開始 2px は LPF を素通し: ペンタブ初動の段付きを残すと
+        // 高筆圧の書き出しが入らないため、生の median をそのまま採用しつつ
+        // LPF 状態は追従させておく (2px 通過後に滑らかに引き継ぐ)。
+        if (this.cumDist < 2.0) {
+            pHat = pMed;
+            this.pressLpf.y = pMed;
+        } else {
+            pHat = this.pressLpf.filter(pMed, ds, this.params.pressureLambda);
+        }
 
         this.prevT = t;
         this.prevX = x;
@@ -142,6 +153,7 @@ export class OneEuroStabilizer {
         this.prevY = null;
         this.prevFiltX = null;
         this.prevFiltY = null;
+        this.cumDist = 0;
         this.lastCommitted = null;
 
         const fp = this._filterPoint(raw);

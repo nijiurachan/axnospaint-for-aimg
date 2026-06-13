@@ -379,6 +379,16 @@ export class PenSystem extends ToolWindow {
             }
         );
 
+        // チェックボックス: 筆圧 ON/OFF (ペン別)
+        document.getElementById('axp_pen_checkbox_usePressure').addEventListener('change',
+            (e) => {
+                const checked = e.target.checked;
+                const pen = this.penObj[this.pen_mode];
+                if (pen) pen.usePressure = checked;
+                this.axpObj.configSystem.saveConfig('P-USP_' + this.pen_mode, checked);
+            }
+        );
+
         // キャンバス：ペンの太さプレビュー
         // 原点からの座標に対する角度（0～359）を算出
         const calcDeg = (dy, dx) => {
@@ -832,6 +842,16 @@ export class PenSystem extends ToolWindow {
             document.getElementById('axp_config_form_stabilizerValue').volume.value,
             type === 'draw' && document.getElementById('axp_config_checkbox_stabilize').checked,
         )
+        // 筆圧 ON/OFF (ペン別、usePressureControl が true のペンのみ表示)
+        {
+            const pen = this.penObj[this.pen_mode];
+            if (pen && pen.usePressureControl) {
+                UTIL.show('axp_pen_form_usePressure');
+                document.getElementById('axp_pen_checkbox_usePressure').checked = !!pen.usePressure;
+            } else {
+                UTIL.hide('axp_pen_form_usePressure');
+            }
+        }
 
 
         // 描画セレクトボックス

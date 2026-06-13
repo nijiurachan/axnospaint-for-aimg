@@ -33,6 +33,7 @@ export class PenObj {
         this.usePenLock = false;
         this.usePenStyle = false;
         this.canUndo = false;
+        this.usePressureControl = false; // ペンウィンドウに筆圧 ON/OFF チェックボックスを出すか
         // 描画
         this.borderRadius = null;
         this.borderStyle = null;

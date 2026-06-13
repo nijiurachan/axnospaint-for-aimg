@@ -26,6 +26,7 @@ export class Round extends PenObj {
         this.usePenStyle = true;
         this.canUndo = true;
         this.usePressure = true;
+        this.usePressureControl = true; // 丸ペン: 筆圧 ON/OFF をユーザーが切替可能
         // Phase A: Round/Square/Eraser のみ新 Stabilizer + 円スタンプ系で描画する。
         // 累積系 (Brush/Fude/Dot/Crayon/EraserDot) は constructor で false に上書きする。
         this.useStabilizerPipeline = true;

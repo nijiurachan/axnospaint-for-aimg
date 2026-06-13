@@ -1540,6 +1540,10 @@ export class ConfigSystem {
                         pObj[elememtId].radius = Number(value);
                         pObj[elememtId].borderRadius = Number(value);
                         break;
+                    // 筆圧 ON/OFF (ペン別)
+                    case 'P-USP':
+                        pObj[elememtId].usePressure = (value === true || value === 'true');
+                        break;
                 }
             }
             return isFound;
@@ -1659,6 +1663,7 @@ export class ConfigSystem {
                 case 'P-TON':
                 case 'P-DEG':
                 case 'P-RAD':
+                case 'P-USP':
                     // 初期化する設定の場合、復元を行わない
                     if (this.axpObj.config('axp_config_form_saveLastPenValue') === 'off') {
                         // スキップしたことを記憶

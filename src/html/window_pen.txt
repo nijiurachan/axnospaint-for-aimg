@@ -74,6 +74,12 @@
                     <div class="axpc_range_label">${_("@PEN.STABILIZER")}</div>
                     <div class="axpc_range_value"><output name="result"></output></div>
                 </form>
+                <!-- 筆圧 ON/OFF（オプション、ペン別） -->
+                <form id="axp_pen_form_usePressure" class="axpc_checkbox axpc_text_border">
+                    <label>
+                        <input type="checkbox" id="axp_pen_checkbox_usePressure" checked>筆圧を反映
+                    </label>
+                </form>
             </div>
 
             <div id="axp_pen_div_spuitColorRGBA">

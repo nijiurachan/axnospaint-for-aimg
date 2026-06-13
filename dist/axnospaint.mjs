@@ -1,5 +1,5 @@
 /*!
- * AXNOS Paint w/ nijiurachan custom version 3.0.0-alpha (2026-06-13T04:05:54.951Z)
+ * AXNOS Paint w/ nijiurachan custom version 3.0.0-alpha (2026-06-13T06:55:42.248Z)
  * (c) 2026- nijiurachan contributors
  * (c) 2022「悪の巣」部屋番号13番：「趣味の悪い大衆酒場[Mad end dance hall]」
  * Licensed under MPL 2.0
@@ -7903,7 +7903,7 @@ class ConfigSystem {
         let targetElement = document.getElementById('axp_config');
         targetElement.insertAdjacentHTML('afterbegin', this.axpObj.translateHTML(_html_config_txt__WEBPACK_IMPORTED_MODULE_2__));
         // バージョン情報の表示
-        document.getElementById('axp_config_div_versionInfo').textContent = `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-06-13T04:05:54.951Z"})`
+        document.getElementById('axp_config_div_versionInfo').textContent = `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-06-13T06:55:42.248Z"})`
     }
     // HTML展開
     deployHTML() {
@@ -12640,9 +12640,8 @@ class Round extends _penobj_js__WEBPACK_IMPORTED_MODULE_0__.PenObj {
     _radiusAt(cp) {
         const halfWidth = (this.size - 0.25) / 2;
         if (!this.usePressure) return halfWidth;
-        // 筆圧 0 でも線が完全には消えないように下限を持たせる
-        const minScale = 0.08;
-        return halfWidth * (minScale + (1 - minScale) * cp.pressure);
+        // 筆圧をそのまま半径に乗算 (下限なし → curve の不感地帯と終端テーパが正しく機能)
+        return halfWidth * cp.pressure;
     }
 
     // 円スタンプ
@@ -12670,7 +12669,8 @@ class Round extends _penobj_js__WEBPACK_IMPORTED_MODULE_0__.PenObj {
             this._drawStamp(p2);
             return;
         }
-        const sinA = (r1 - r2) / d;
+        // 外接共通接線の傾き: sin α = (r2 - r1) / d
+        const sinA = (r2 - r1) / d;
         if (Math.abs(sinA) >= 0.999) {
             // 一方の円が他方を完全に包含 → 大きい方だけ塗って終わり
             const big = (r1 > r2) ? p1 : p2;
@@ -12681,12 +12681,12 @@ class Round extends _penobj_js__WEBPACK_IMPORTED_MODULE_0__.PenObj {
         const cosA = Math.sqrt(1 - sinA * sinA);
         const ux = dx / d;
         const uy = dy / d;
-        // 上側接線における垂線方向 (p を α 回転)
+        // 上側接線における外向き垂線 (p_up = (-uy, ux) を α 回転)
         const nUx = -uy * cosA - ux * sinA;
         const nUy =  ux * cosA - uy * sinA;
-        // 下側 (p を -α 回転)
-        const nLx = -uy * cosA + ux * sinA;
-        const nLy =  uy * sinA + ux * cosA;
+        // 下側接線における外向き垂線 (p_down = (uy, -ux) を α 回転)
+        const nLx =  uy * cosA + ux * sinA;
+        const nLy =  uy * sinA - ux * cosA;
         const ctx = this.CANVAS.brush_ctx;
         ctx.beginPath();
         ctx.moveTo(p1.x + r1 * nUx, p1.y + r1 * nUy);
@@ -14349,53 +14349,67 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
 /* harmony export */   OneEuroStabilizer: () => (/* binding */ OneEuroStabilizer)
 /* harmony export */ });
-// @description Stage 2: ストローク平滑化（1€フィルタ + 筆圧LPF + Catmull-Rom 補間）
+// @description Stage 2: ストローク平滑化
 //
-// 入力: RawPoint { x, y, pressure, t }
-// 出力: CommittedPoint[] { x, y, pressure, t }
+// 位置: 1€フィルタ (時間基準)
+// 筆圧: 窓5メディアン → 空間LPF (波長 λ = stabilizer 値 [px])
+// 補間: 確定点間隔 > gapPx で線形補間
+// 終端: onEnd で 2px のテーパ (筆圧 0 まで線形に落とす)
 //
-// 1€フィルタ参照: Casiez et al. (2012) "1€ Filter: A Simple Speed-based Low-pass Filter
+// 1€ 参照: Casiez et al. (2012) "1€ Filter: A Simple Speed-based Low-pass Filter
 // for Noisy Input in Interactive Systems"
 
-// 低域通過フィルタ係数 (cutoff Hz, dt 秒)
-function lowPassAlpha(cutoff, dt) {
+// 1ポール時間LPF α 係数 (cutoff Hz, dt 秒)
+function timeLowPassAlpha(cutoff, dt) {
     const tau = 1.0 / (2.0 * Math.PI * cutoff);
     return 1.0 / (1.0 + tau / dt);
 }
 
-// 単純な一次 IIR
 class LowPass {
-    constructor() {
-        this.y = null;
-    }
-    reset() {
-        this.y = null;
-    }
+    constructor() { this.y = null; }
+    reset() { this.y = null; }
     filter(x, alpha) {
-        if (this.y === null) {
-            this.y = x;
-        } else {
-            this.y = alpha * x + (1 - alpha) * this.y;
-        }
+        if (this.y === null) this.y = x;
+        else this.y = alpha * x + (1 - alpha) * this.y;
         return this.y;
     }
-    last() {
+    last() { return this.y; }
+}
+
+// 窓5の causal なランニング・メディアン
+class Median5 {
+    constructor() { this.buf = []; }
+    reset() { this.buf = []; }
+    push(x) {
+        this.buf.push(x);
+        if (this.buf.length > 5) this.buf.shift();
+        const sorted = [...this.buf].sort((a, b) => a - b);
+        return sorted[Math.floor(sorted.length / 2)];
+    }
+}
+
+// 空間1ポールLPF: α = ds / (λ + ds)。ds=0 → α=0 (保持)、λ=0 → α=1 (素通し)
+class SpatialLowPass {
+    constructor() { this.y = null; }
+    reset() { this.y = null; }
+    filter(x, ds, lambda) {
+        if (this.y === null) { this.y = x; return this.y; }
+        if (lambda <= 0) { this.y = x; return this.y; }
+        const a = ds / (lambda + ds);
+        this.y = a * x + (1 - a) * this.y;
         return this.y;
     }
 }
 
-// 既存スライダー (0-10) → 1€パラメータへのマップ
-// 0: フィルタ素通し相当 (min_cutoff 高め)
-// 10: 強い平滑 (min_cutoff 低め、応答ゆるい)
-function mapStabilizerToParams(stabilizerValue) {
-    const v = Math.max(0, Math.min(10, stabilizerValue));
-    // min_cutoff: 0 → 30Hz, 10 → 1.0Hz (対数気味)
-    const min_cutoff = 30.0 * Math.pow(0.45, v);
-    // beta: 速度補正係数 (固定でも実用十分)
+// スライダー値 (0-10) → 内部パラメータ
+function mapStabilizerToParams(v) {
+    const vClamped = Math.max(0, Math.min(10, v));
+    // 位置: 0 → ほぼ素通し (min_cutoff=30Hz), 10 → 強く平滑 (1.0Hz)
+    const min_cutoff = 30.0 * Math.pow(0.45, vClamped);
     const beta = 0.05;
-    // 筆圧 LPF カットオフ: 0 → 20Hz, 10 → 3Hz
-    const pressureCutoff = 20.0 * Math.pow(0.55, v);
-    return { min_cutoff, beta, pressureCutoff };
+    // 筆圧: 空間LPFの波長 (px)。0=素通し、10=波長10px
+    const pressureLambda = vClamped;
+    return { min_cutoff, beta, pressureLambda };
 }
 
 class OneEuroStabilizer {
@@ -14404,75 +14418,81 @@ class OneEuroStabilizer {
         this.yPos = new LowPass();
         this.dxFilt = new LowPass();
         this.dyFilt = new LowPass();
-        this.pressLpf = new LowPass();
+        this.pressMed = new Median5();
+        this.pressLpf = new SpatialLowPass();
         this.prevT = null;
         this.prevX = null;
         this.prevY = null;
-        // 直近の確定済み (補間/フォールバック用)
+        this.prevFiltX = null;
+        this.prevFiltY = null;
         this.lastCommitted = null;
-        // パラメータ
         this.params = mapStabilizerToParams(0);
         this.d_cutoff = 1.0;
     }
 
-    // パラメータ更新 (UI スライダー変更時に外部から呼び出し)
     setStabilizerValue(stabilizerValue) {
         this.params = mapStabilizerToParams(stabilizerValue);
     }
 
-    // 一点を 1€ で平滑化
     _filterPoint(raw) {
         const { x, y, pressure, t } = raw;
         const dt = (this.prevT === null) ? (1.0 / 60.0) : Math.max(0.001, (t - this.prevT) / 1000.0);
 
+        // 筆圧: 窓5メディアン → 空間LPF
+        const pMed = this.pressMed.push(pressure);
+
         if (this.prevT === null) {
-            // 初回: フィルタ初期化、入力そのまま返す
+            // 初回サンプル: フィルタ初期化
             this.xPos.filter(x, 1);
             this.yPos.filter(y, 1);
             this.dxFilt.filter(0, 1);
             this.dyFilt.filter(0, 1);
-            this.pressLpf.filter(pressure, 1);
+            this.pressLpf.filter(pMed, 0, 0);
             this.prevT = t;
             this.prevX = x;
             this.prevY = y;
-            return { x, y, pressure: this.pressLpf.last(), t };
+            this.prevFiltX = x;
+            this.prevFiltY = y;
+            return { x, y, pressure: pMed, t };
         }
 
-        // 速度を低域通過
+        // 位置: 1€フィルタ (時間基準)
         const dx = (x - this.prevX) / dt;
         const dy = (y - this.prevY) / dt;
-        const aD = lowPassAlpha(this.d_cutoff, dt);
+        const aD = timeLowPassAlpha(this.d_cutoff, dt);
         const dxHat = this.dxFilt.filter(dx, aD);
         const dyHat = this.dyFilt.filter(dy, aD);
         const speed = Math.hypot(dxHat, dyHat);
-
-        // 適応カットオフ: 速い動きほどカットオフを上げて追従させる
         const cutoff = this.params.min_cutoff + this.params.beta * speed;
-        const aP = lowPassAlpha(cutoff, dt);
+        const aP = timeLowPassAlpha(cutoff, dt);
         const xHat = this.xPos.filter(x, aP);
         const yHat = this.yPos.filter(y, aP);
 
-        // 筆圧 LPF (段付きノイズ対策、カットオフは固定気味)
-        const aPress = lowPassAlpha(this.params.pressureCutoff, dt);
-        const pHat = this.pressLpf.filter(pressure, aPress);
+        // 筆圧: 空間LPF (フィルタ後の位置を基準に進行距離を測る)
+        const ds = Math.hypot(xHat - this.prevFiltX, yHat - this.prevFiltY);
+        const pHat = this.pressLpf.filter(pMed, ds, this.params.pressureLambda);
 
         this.prevT = t;
         this.prevX = x;
         this.prevY = y;
+        this.prevFiltX = xHat;
+        this.prevFiltY = yHat;
 
         return { x: xHat, y: yHat, pressure: pHat, t };
     }
 
-    // ストローク開始
     onStart(raw) {
         this.xPos.reset();
         this.yPos.reset();
         this.dxFilt.reset();
         this.dyFilt.reset();
+        this.pressMed.reset();
         this.pressLpf.reset();
         this.prevT = null;
         this.prevX = null;
         this.prevY = null;
+        this.prevFiltX = null;
+        this.prevFiltY = null;
         this.lastCommitted = null;
 
         const fp = this._filterPoint(raw);
@@ -14480,29 +14500,25 @@ class OneEuroStabilizer {
         return [fp];
     }
 
-    // ストローク中
-    // gapPx: 確定点間がこの px 超なら Catmull-Rom で補間 (省略時はペンの size 依存で外部から渡す想定)
     onMove(raw, gapPx) {
-        if (this.lastCommitted === null) {
-            return this.onStart(raw);
-        }
+        if (this.lastCommitted === null) return this.onStart(raw);
         const fp = this._filterPoint(raw);
         return this._emit(fp, gapPx);
     }
 
-    // ストローク終了 (最終点)
     onEnd(raw, gapPx) {
         if (this.lastCommitted === null) {
-            // 開始即終了
             const fp = this._filterPoint(raw);
             this.lastCommitted = fp;
-            return [fp];
+            return [this._taperOnly(fp)];
         }
         const fp = this._filterPoint(raw);
-        return this._emit(fp, gapPx);
+        const out = this._emit(fp, gapPx);
+        this._appendTaper(out);
+        return out;
     }
 
-    // 確定点を出力 (必要なら補間挿入)
+    // 確定点を出力 (必要なら線形補間で挿入)
     _emit(fp, gapPx) {
         const out = [];
         const prev = this.lastCommitted;
@@ -14510,11 +14526,7 @@ class OneEuroStabilizer {
         const gap = (gapPx && gapPx > 0) ? gapPx : 6.0;
 
         if (dist > gap) {
-            // Catmull-Rom 補間 (端点制御点は両端を 2 倍化して線形に近づける単純版)
-            // tension 0.5 相当
             const n = Math.max(1, Math.ceil(dist / gap));
-            // 3 点以上の履歴が要らない単純化版: prev と fp の線形 (Catmull-Rom 風) で n-1 個挿入
-            // 序盤や直線移動はこれで十分滑らか
             for (let i = 1; i < n; i++) {
                 const tt = i / n;
                 out.push({
@@ -14528,6 +14540,45 @@ class OneEuroStabilizer {
         out.push(fp);
         this.lastCommitted = fp;
         return out;
+    }
+
+    // 終端 2px テーパ: 末尾点を「2px 手前 knee + 末尾 tip(pressure=0)」に展開
+    _appendTaper(out) {
+        const taperLen = 2.0;
+        if (out.length === 0) return;
+        const last = out[out.length - 1];
+        // 方向ベクトル: out 内の直前点 → last。なければ stabilizer の lastCommitted 直前
+        let dirX = 0, dirY = 0, d = 0;
+        if (out.length >= 2) {
+            const p = out[out.length - 2];
+            dirX = last.x - p.x;
+            dirY = last.y - p.y;
+            d = Math.hypot(dirX, dirY);
+        }
+        if (d > taperLen) {
+            const ux = dirX / d;
+            const uy = dirY / d;
+            // 2px 手前に knee (last の筆圧をそのまま採用)
+            const knee = {
+                x: last.x - ux * taperLen,
+                y: last.y - uy * taperLen,
+                pressure: last.pressure,
+                t: last.t,
+            };
+            // last 自体を pressure=0 にして tip 化
+            const tip = { x: last.x, y: last.y, pressure: 0, t: last.t };
+            out[out.length - 1] = knee;
+            out.push(tip);
+            this.lastCommitted = tip;
+        } else {
+            // 区間が短い: 末尾点を pressure=0 にするだけ
+            last.pressure = 0;
+        }
+    }
+
+    // 開始即終了用 (stroke 内に確定点 1 つしかない時)
+    _taperOnly(fp) {
+        return { x: fp.x, y: fp.y, pressure: 0, t: fp.t };
     }
 }
 
@@ -20630,7 +20681,7 @@ __webpack_require__.r(__webpack_exports__);
     axpObj;
     constructor(option) {
         console.log('version:', "3.0.0-alpha");
-        console.log('build:', "2026-06-13T04:05:54.951Z");
+        console.log('build:', "2026-06-13T06:55:42.248Z");
         (async () => {
             // 追加辞書オプションチェック
             let additionalDictionaryJSON = null;
@@ -21011,7 +21062,7 @@ __webpack_require__.r(__webpack_exports__);
     }
     // バージョン
     version() {
-        return `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-06-13T04:05:54.951Z"})`;
+        return `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-06-13T06:55:42.248Z"})`;
     }
     // 画面の表示／非表示
     on() {
@@ -21023,7 +21074,7 @@ __webpack_require__.r(__webpack_exports__);
         this.axpObj.isClose = true;
     }
     static ver() {
-        return `version ${"3.0.0-alpha"} (${"2026-06-13T04:05:54.951Z"})`;
+        return `version ${"3.0.0-alpha"} (${"2026-06-13T06:55:42.248Z"})`;
     }
 });
 

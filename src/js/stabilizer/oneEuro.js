@@ -213,7 +213,7 @@ export class OneEuroStabilizer {
     // 終端テーパ: 末尾点を「taperPx 手前 knee + 末尾 tip(pressure=0)」に展開
     _appendTaper(out) {
         const taperLen = this.taperPx;
-        if (out.length === 0) return;
+        if (taperLen <= 0 || out.length === 0) return;
         const last = out[out.length - 1];
         // 方向ベクトル: out 内の直前点 → last。なければ stabilizer の lastCommitted 直前
         let dirX = 0, dirY = 0, d = 0;

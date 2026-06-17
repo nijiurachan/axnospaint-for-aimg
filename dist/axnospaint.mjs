@@ -1,5 +1,5 @@
 /*!
- * AXNOS Paint w/ nijiurachan custom version 3.0.0-alpha (2026-06-17T01:11:40.099Z)
+ * AXNOS Paint w/ nijiurachan custom version 3.0.0-alpha (2026-06-17T17:11:27.376Z)
  * (c) 2026- nijiurachan contributors
  * (c) 2022「悪の巣」部屋番号13番：「趣味の悪い大衆酒場[Mad end dance hall]」
  * Licensed under MPL 2.0
@@ -7903,7 +7903,7 @@ class ConfigSystem {
         let targetElement = document.getElementById('axp_config');
         targetElement.insertAdjacentHTML('afterbegin', this.axpObj.translateHTML(_html_config_txt__WEBPACK_IMPORTED_MODULE_2__));
         // バージョン情報の表示
-        document.getElementById('axp_config_div_versionInfo').textContent = `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-06-17T01:11:40.099Z"})`
+        document.getElementById('axp_config_div_versionInfo').textContent = `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-06-17T17:11:27.376Z"})`
     }
     // HTML展開
     deployHTML() {
@@ -11115,7 +11115,6 @@ class StampPenBase extends _drawingpen_js__WEBPACK_IMPORTED_MODULE_0__.DrawingPe
     constructor(option) {
         super(option);
         // ピクセル単位の調節パラメータ (ペンごとに override 可)
-        this.endTaperPx = 2;   // 終端テーパ長 (意図しない強点の抑制)
         this.startRawPx = 2;   // 開幕この距離まで筆圧フィルタを素通し
         this.subPxFloor = 0.5; // サブピクセル幅の形状下限
     }
@@ -11129,7 +11128,6 @@ class StampPenBase extends _drawingpen_js__WEBPACK_IMPORTED_MODULE_0__.DrawingPe
             ...(0,_stabilizer_strokePipeline_js__WEBPACK_IMPORTED_MODULE_2__.readStrokeSettings)(),
             usePressure: this.usePressure,
             startPx: this.startRawPx,
-            endTaperPx: this.endTaperPx,
         });
         this.lastCommitted = null;
 
@@ -14525,7 +14523,6 @@ __webpack_require__.r(__webpack_exports__);
 // 位置: 1€フィルタ (時間基準)
 // 筆圧: 窓5メディアン → 空間LPF (波長 λ = stabilizer 値 [px])
 // 補間: 確定点間隔 > gapPx で線形補間
-// 終端: onEnd で 2px のテーパ (筆圧 0 まで線形に落とす)
 //
 // 1€ 参照: Casiez et al. (2012) "1€ Filter: A Simple Speed-based Low-pass Filter
 // for Noisy Input in Interactive Systems"
@@ -14602,15 +14599,13 @@ class OneEuroStabilizer {
         this.d_cutoff = 1.0;
         // ペンごとに調節できるピクセル単位パラメータ (StrokePipeline 経由で設定)
         this.startPx = 2.0;  // 開幕この距離までは筆圧 LPF を素通し
-        this.taperPx = 2.0;  // 終端この距離で筆圧 0 までテーパ
     }
 
     // ストローク開始時に一括設定する。
-    // stabilizerValue: 0-10 スライダー値 / startPx,taperPx: px 単位
-    configure({ stabilizerValue = 0, startPx = 2.0, taperPx = 2.0 } = {}) {
+    // stabilizerValue: 0-10 スライダー値 / startPx: px 単位
+    configure({ stabilizerValue = 0, startPx = 2.0 } = {}) {
         this.params = mapStabilizerToParams(stabilizerValue);
         this.startPx = startPx;
-        this.taperPx = taperPx;
     }
 
     _filterPoint(raw) {
@@ -14697,15 +14692,17 @@ class OneEuroStabilizer {
     }
 
     onEnd(raw, gapPx) {
+        // pointerup は筆圧0 を報告しがち。終端サンプルは位置のみ採用し、
+        // 筆圧は直前の確定値を引き継いで median を汚さない (末端が不自然に細るのを防ぐ)。
+        const endRaw = (this.lastCommitted !== null)
+            ? { ...raw, pressure: this.lastCommitted.pressure }
+            : raw;
+        const fp = this._filterPoint(endRaw);
         if (this.lastCommitted === null) {
-            const fp = this._filterPoint(raw);
             this.lastCommitted = fp;
-            return [this._taperOnly(fp)];
+            return [fp];
         }
-        const fp = this._filterPoint(raw);
-        const out = this._emit(fp, gapPx);
-        this._appendTaper(out);
-        return out;
+        return this._emit(fp, gapPx);
     }
 
     // 確定点を出力 (必要なら線形補間で挿入)
@@ -14731,45 +14728,6 @@ class OneEuroStabilizer {
         this.lastCommitted = fp;
         return out;
     }
-
-    // 終端テーパ: 末尾点を「taperPx 手前 knee + 末尾 tip(pressure=0)」に展開
-    _appendTaper(out) {
-        const taperLen = this.taperPx;
-        if (out.length === 0) return;
-        const last = out[out.length - 1];
-        // 方向ベクトル: out 内の直前点 → last。なければ stabilizer の lastCommitted 直前
-        let dirX = 0, dirY = 0, d = 0;
-        if (out.length >= 2) {
-            const p = out[out.length - 2];
-            dirX = last.x - p.x;
-            dirY = last.y - p.y;
-            d = Math.hypot(dirX, dirY);
-        }
-        if (d > taperLen) {
-            const ux = dirX / d;
-            const uy = dirY / d;
-            // 2px 手前に knee (last の筆圧をそのまま採用)
-            const knee = {
-                x: last.x - ux * taperLen,
-                y: last.y - uy * taperLen,
-                pressure: last.pressure,
-                t: last.t,
-            };
-            // last 自体を pressure=0 にして tip 化
-            const tip = { x: last.x, y: last.y, pressure: 0, t: last.t };
-            out[out.length - 1] = knee;
-            out.push(tip);
-            this.lastCommitted = tip;
-        } else {
-            // 区間が短い: 末尾点を pressure=0 にするだけ
-            last.pressure = 0;
-        }
-    }
-
-    // 開始即終了用 (stroke 内に確定点 1 つしかない時)
-    _taperOnly(fp) {
-        return { x: fp.x, y: fp.y, pressure: 0, t: fp.t };
-    }
 }
 
 
@@ -14793,7 +14751,6 @@ __webpack_require__.r(__webpack_exports__);
 //   raw 点群 {x, y, rawPressure, pointerType, t}
 //     ↓ 筆圧カーブ変換 (入力筆圧 → 出力筆圧)
 //     ↓ 手ブレ補正 (位置: 1€ / 筆圧: median5 + 空間LPF、開幕 startPx は素通し)
-//     ↓ 終端テーパ (endTaperPx)
 //     ↓ 確定点ストリーム {x, y, pressure, t} を emit (gap で線形補間)
 //
 // 設定 (手ブレ強度・筆圧カーブ) の DOM 読み取りは readStrokeSettings() に集約し、
@@ -14831,11 +14788,11 @@ class StrokePipeline {
     // ストローク開始時に一括設定。
     //   stabilizerValue / pressureCurve … readStrokeSettings() の戻り値
     //   usePressure … 筆圧を採用するか (ペン側のフラグ)
-    //   startPx / endTaperPx … ペンごとに調節可能なピクセル単位パラメータ
-    configure({ stabilizerValue = 0, pressureCurve, usePressure = false, startPx = 2, endTaperPx = 2 } = {}) {
+    //   startPx … 開幕の筆圧フィルタ素通し距離 (ペンごとに調節可能)
+    configure({ stabilizerValue = 0, pressureCurve, usePressure = false, startPx = 2 } = {}) {
         this.usePressure = usePressure;
         if (pressureCurve) this.pressureCurve = pressureCurve;
-        this.smoother.configure({ stabilizerValue, startPx, taperPx: endTaperPx });
+        this.smoother.configure({ stabilizerValue, startPx });
     }
 
     // 入力筆圧 → 出力筆圧。
@@ -20981,7 +20938,7 @@ __webpack_require__.r(__webpack_exports__);
     axpObj;
     constructor(option) {
         console.log('version:', "3.0.0-alpha");
-        console.log('build:', "2026-06-17T01:11:40.099Z");
+        console.log('build:', "2026-06-17T17:11:27.376Z");
         (async () => {
             // 追加辞書オプションチェック
             let additionalDictionaryJSON = null;
@@ -21362,7 +21319,7 @@ __webpack_require__.r(__webpack_exports__);
     }
     // バージョン
     version() {
-        return `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-06-17T01:11:40.099Z"})`;
+        return `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-06-17T17:11:27.376Z"})`;
     }
     // 画面の表示／非表示
     on() {
@@ -21374,7 +21331,7 @@ __webpack_require__.r(__webpack_exports__);
         this.axpObj.isClose = true;
     }
     static ver() {
-        return `version ${"3.0.0-alpha"} (${"2026-06-17T01:11:40.099Z"})`;
+        return `version ${"3.0.0-alpha"} (${"2026-06-17T17:11:27.376Z"})`;
     }
 });
 

@@ -13,7 +13,6 @@ export class StampPenBase extends DrawingPenBase {
     constructor(option) {
         super(option);
         // ピクセル単位の調節パラメータ (ペンごとに override 可)
-        this.endTaperPx = 2;   // 終端テーパ長 (意図しない強点の抑制)
         this.startRawPx = 2;   // 開幕この距離まで筆圧フィルタを素通し
         this.subPxFloor = 0.5; // サブピクセル幅の形状下限
     }
@@ -27,7 +26,6 @@ export class StampPenBase extends DrawingPenBase {
             ...readStrokeSettings(),
             usePressure: this.usePressure,
             startPx: this.startRawPx,
-            endTaperPx: this.endTaperPx,
         });
         this.lastCommitted = null;
 

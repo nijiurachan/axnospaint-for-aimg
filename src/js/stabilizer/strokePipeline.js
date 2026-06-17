@@ -3,7 +3,6 @@
 //   raw 点群 {x, y, rawPressure, pointerType, t}
 //     ↓ 筆圧カーブ変換 (入力筆圧 → 出力筆圧)
 //     ↓ 手ブレ補正 (位置: 1€ / 筆圧: median5 + 空間LPF、開幕 startPx は素通し)
-//     ↓ 終端テーパ (endTaperPx)
 //     ↓ 確定点ストリーム {x, y, pressure, t} を emit (gap で線形補間)
 //
 // 設定 (手ブレ強度・筆圧カーブ) の DOM 読み取りは readStrokeSettings() に集約し、
@@ -41,11 +40,11 @@ export class StrokePipeline {
     // ストローク開始時に一括設定。
     //   stabilizerValue / pressureCurve … readStrokeSettings() の戻り値
     //   usePressure … 筆圧を採用するか (ペン側のフラグ)
-    //   startPx / endTaperPx … ペンごとに調節可能なピクセル単位パラメータ
-    configure({ stabilizerValue = 0, pressureCurve, usePressure = false, startPx = 2, endTaperPx = 2 } = {}) {
+    //   startPx … 開幕の筆圧フィルタ素通し距離 (ペンごとに調節可能)
+    configure({ stabilizerValue = 0, pressureCurve, usePressure = false, startPx = 2 } = {}) {
         this.usePressure = usePressure;
         if (pressureCurve) this.pressureCurve = pressureCurve;
-        this.smoother.configure({ stabilizerValue, startPx, taperPx: endTaperPx });
+        this.smoother.configure({ stabilizerValue, startPx });
     }
 
     // 入力筆圧 → 出力筆圧。

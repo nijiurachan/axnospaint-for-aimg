@@ -23,7 +23,9 @@ export function readStrokeSettings() {
     const formB = document.getElementById('axp_config_form_pressureB');
     const formC = document.getElementById('axp_config_form_pressureC');
     const aRaw = formA && formA.volume ? Number(formA.volume.value) : 0;
-    const b = formB && formB.volume ? Number(formB.volume.value) : 1;
+    const bRaw = formB && formB.volume ? Number(formB.volume.value) : 1;
+    // b は getAdjustedPressure() の分母。0/NaN だと筆圧が固定・無効化されるため防御
+    const b = (Number.isFinite(bRaw) && bRaw > 0) ? bRaw : 1;
     const c = formC && formC.volume ? Number(formC.volume.value) : 0;
     const a = Math.pow(2, aRaw); // 内部値域 -2〜2 → 実値 0.25〜4
     return { stabilizerValue, pressureCurve: { a, b, c } };
@@ -50,8 +52,10 @@ export class StrokePipeline {
     // 筆圧は pen 系のみ採用する (mouse は 0.5 固定相当の 1.0、touch はデバイス依存で
     // 信頼できないため 1.0)。usePressure=false のペンも常に 1.0。
     _pressure(input) {
+        // rawPressure === 0 もカーブに通す (deadzone 経由で 0 出力)。
+        // > 0 で除外すると筆圧0のサンプルが 1.0 に跳ねて太さが急変するため >= 0 とする。
         if (this.usePressure && input.pointerType === 'pen'
-            && typeof input.rawPressure === 'number' && input.rawPressure > 0) {
+            && typeof input.rawPressure === 'number' && input.rawPressure >= 0) {
             const { a, b, c } = this.pressureCurve;
             return getAdjustedPressure(input.rawPressure, a, b, c);
         }

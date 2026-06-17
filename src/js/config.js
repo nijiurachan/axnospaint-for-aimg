@@ -1540,9 +1540,12 @@ export class ConfigSystem {
                         pObj[elememtId].radius = Number(value);
                         pObj[elememtId].borderRadius = Number(value);
                         break;
-                    // 筆圧 ON/OFF (ペン別)
+                    // 筆圧 ON/OFF (ペン別)。筆圧コントロールを持つペンのみ復元する
+                    // (非対応ペンは保存値に関わらず false 維持。古い保存データ対策)
                     case 'P-USP':
-                        pObj[elememtId].usePressure = (value === true || value === 'true');
+                        if (pObj[elememtId].usePressureControl) {
+                            pObj[elememtId].usePressure = (value === true || value === 'true');
+                        }
                         break;
                 }
             }

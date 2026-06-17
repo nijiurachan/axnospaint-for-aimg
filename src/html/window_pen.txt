@@ -75,11 +75,11 @@
                     <div class="axpc_range_value"><output name="result"></output></div>
                 </form>
                 <!-- 筆圧 ON/OFF（オプション、ペン別） -->
-                <form id="axp_pen_form_usePressure" class="axpc_checkbox axpc_text_border">
+                <div id="axp_pen_form_usePressure" class="axpc_checkbox axpc_text_border">
                     <label>
-                        <input type="checkbox" id="axp_pen_checkbox_usePressure" checked>筆圧を反映
+                        <input type="checkbox" id="axp_pen_checkbox_usePressure" checked>${_("@PEN.USE_PRESSURE")}
                     </label>
-                </form>
+                </div>
             </div>
 
             <div id="axp_pen_div_spuitColorRGBA">

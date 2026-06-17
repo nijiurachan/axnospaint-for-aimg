@@ -151,7 +151,8 @@ export class StampPenBase extends DrawingPenBase {
             // 一方の円が他方を完全に包含 → 大きい方だけ塗って終わり
             const big = (r1 > r2) ? p1 : p2;
             this._drawStamp(big);
-            this._drawStamp(p2);
+            // big が p2 のときは二重描画になる (サブピクセルα/消しゴムで濃くなる) ため回避
+            if (big !== p2) this._drawStamp(p2);
             return;
         }
         const cosA = Math.sqrt(1 - sinA * sinA);

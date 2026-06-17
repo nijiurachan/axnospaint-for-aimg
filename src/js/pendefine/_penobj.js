@@ -33,6 +33,7 @@ export class PenObj {
         this.usePenLock = false;
         this.usePenStyle = false;
         this.canUndo = false;
+        this.usePressureControl = false; // ペンウィンドウに筆圧 ON/OFF チェックボックスを出すか
         // 描画
         this.borderRadius = null;
         this.borderStyle = null;
@@ -63,11 +64,12 @@ export class PenObj {
         this.CANVAS.draw_ctx.shadowColor = this.getColor();
         var blur_value;
         if (level === undefined) {
-            // ぼかしスライダー有効時のみ適用
+            // ぼかしスライダー有効時のみ各ペンの blurLevel を使用、
+            // OFF のときは常に 1 を反映する (軽い既定ぼかし)
             if (this.axpObj.config('axp_config_form_blurLevel') === 'on') {
                 blur_value = this.blurLevel;
             } else {
-                blur_value = 0;
+                blur_value = 1;
             }
         } else {
             blur_value = Number(level);

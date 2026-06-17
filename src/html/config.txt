@@ -110,6 +110,33 @@
                         </label>
                     </div>
                 </div>
+                <div class="axpc_config_group" data-title="筆圧">
+                    <u>筆圧カーブ</u>
+                    <div style="display: flex; align-items: flex-start; gap: 12px;">
+                        <canvas id="axp_config_canvas_pressureCurve" width="160" height="160"
+                            style="border: 1px solid #ccc; background-color: #fff; flex-shrink: 0;"></canvas>
+                        <div style="flex: 1; min-width: 0;">
+                            <form id="axp_config_form_pressureB" oninput="result.value=parseFloat(volume.value).toFixed(2)"
+                                class="axpc_range axpc_range_width228 axpc_SAVE">
+                                <input type="range" name="volume" value="1.0" step="0.1" min="1.0" max="10.0">
+                                <div class="axpc_range_label axpc_text_border">感度</div>
+                                <div class="axpc_range_value axpc_text_border"><output name="result">1.00</output></div>
+                            </form>
+                            <form id="axp_config_form_pressureA" oninput="result.value=Math.pow(2, parseFloat(volume.value)).toFixed(2)"
+                                class="axpc_range axpc_range_width228 axpc_SAVE">
+                                <input type="range" name="volume" value="1" step="0.05" min="-2" max="2">
+                                <div class="axpc_range_label axpc_text_border">乗数</div>
+                                <div class="axpc_range_value axpc_text_border"><output name="result">2.00</output></div>
+                            </form>
+                            <form id="axp_config_form_pressureC" oninput="result.value=parseFloat(volume.value).toFixed(2)"
+                                class="axpc_range axpc_range_width228 axpc_SAVE">
+                                <input type="range" name="volume" value="0.0" step="0.01" min="0.0" max="0.99">
+                                <div class="axpc_range_label axpc_text_border">不感地帯</div>
+                                <div class="axpc_range_value axpc_text_border"><output name="result">0.00</output></div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
                 <div class="axpc_config_group" data-title="スポイト">
                     <u>使用後ペンに切り替える</u>
                     <form id="axp_config_form_autoChangeSpuitToPen" class="axpc_radio">

@@ -1,12 +1,12 @@
-// @description ペン定義：親クラス＞丸ペン＞エアブラシ
+// @description ペン定義：蓄積系共通＞エアブラシ
 
-import { Round } from './round.js';
+import { AccumulativePenBase } from './_accumulativepen.js';
 
 // ブラシ
-export class Brush extends Round {
+export class Brush extends AccumulativePenBase {
     constructor(option) {
         super(option);
-        // 値（Roundからの差分）
+        // 値（蓄積系共通からの差分）
         this.name = this.axpObj._('@PENNAME.AIRBRUSH');
         this.size = 100;
         this.alpha = 30;
@@ -27,18 +27,7 @@ export class Brush extends Round {
         this.CANVAS.brush_ctx.clearRect(0, 0, this.axpObj.x_size, this.axpObj.y_size);
         this.blur();
     }
-    // 描画中
-    move(x, y) {
-        // 描画継続中
-        if (this.axpObj.isDrawing && !this.axpObj.isDrawCancel) {
-            // 描画確定済み
-            this.axpObj.isDrawn = true;
-            // 入力座標の記憶
-            this.input_position.push({ x, y });
-            // 描画
-            this.draw();
-        }
-    }
+    // 描画中の move() は蓄積系共通 (AccumulativePenBase) の既定を使用
     draw() {
         var radius = this.size / 2; // 半径指定
         var grad = this.CANVAS.brush_ctx.createRadialGradient(

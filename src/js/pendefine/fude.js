@@ -1,13 +1,13 @@
-// @description ペン定義：親クラス＞丸ペン＞筆ペン
+// @description ペン定義：蓄積系共通＞筆ペン
 
-import { Round } from './round.js';
+import { AccumulativePenBase } from './_accumulativepen.js';
 import { calcDistance } from '../etc.js';
 
 // 筆ペン
-export class Fude extends Round {
+export class Fude extends AccumulativePenBase {
     constructor(option) {
         super(option);
-        // 値（PenObjからの差分）
+        // 値（蓄積系共通からの差分）
         this.name = this.axpObj._('@PENNAME.CALLIGRAPHY');
         this.size = 5;
         this.toneLevel = null;
@@ -21,18 +21,7 @@ export class Fude extends Round {
         // 筆用サイズ調整
         this.CANVAS.brush_ctx.lineWidth = this.size / 2;
     }
-    // 描画中
-    move(x, y) {
-        // 描画継続中
-        if (this.axpObj.isDrawing && !this.axpObj.isDrawCancel) {
-            // 描画確定済み
-            this.axpObj.isDrawn = true;
-            // 入力座標の記憶
-            this.input_position.push({ x, y });
-            // 描画
-            this.draw();
-        }
-    }
+    // 描画中の move() は蓄積系共通 (AccumulativePenBase) の既定を使用
     draw() {
         // 筆の場合ブラシエリアを初期化しない
         let old_x = this.input_position[this.input_position.length - 2].x;

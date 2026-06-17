@@ -94,6 +94,25 @@ export function calcMidPointBetween(p1, p2) {
         y: (p2.y + p1.y) / 2
     };
 }
+/**
+ * 筆圧カーブ補正
+ *  - (0, 0) ─ (c/b, 0): デッドゾーン
+ *  - (c/b, 0) ─ (1/b, 1): x^a 相当の遷移
+ *  - (1/b, 1) ─ (1, 1): クリップ
+ * @param {number} x 生筆圧 (0-1)
+ * @param {number} a 乗数 (0.25-4, 1 で線形)
+ * @param {number} b 感度 (1-10)
+ * @param {number} c 不感地帯割合 (0-0.99)
+ */
+export function getAdjustedPressure(x, a, b, c) {
+    const safeC = Math.min(Math.max(c, 0), 0.999);
+    const deadzone = safeC / b;
+    const maxThreshold = 1.0 / b;
+    if (x <= deadzone) return 0.0;
+    if (x >= maxThreshold) return 1.0;
+    const normalized = (b * x - safeC) / (1.0 - safeC);
+    return Math.pow(normalized, a);
+}
 
 // 共通処理：HEXをRGBに変換
 export function hex2rgb(hex) {

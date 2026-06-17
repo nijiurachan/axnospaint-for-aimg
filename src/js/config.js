@@ -577,6 +577,58 @@ export class ConfigSystem {
             this.saveConfig('RANGE_axp_config_form_stabilizerValue', e.target.value);
         }
 
+        // 筆圧カーブ プレビュー
+        const drawPressureCurve = () => {
+            const canvas = document.getElementById('axp_config_canvas_pressureCurve');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width;
+            const h = canvas.height;
+            const aRaw = parseFloat(document.getElementById('axp_config_form_pressureA').volume.value);
+            const b = parseFloat(document.getElementById('axp_config_form_pressureB').volume.value);
+            const c = parseFloat(document.getElementById('axp_config_form_pressureC').volume.value);
+            const a = Math.pow(2, aRaw);
+            const safeC = Math.min(Math.max(c, 0), 0.999);
+            const deadzone = safeC / b;
+            const maxT = 1.0 / b;
+            const f = (x) => {
+                if (x <= deadzone) return 0;
+                if (x >= maxT) return 1;
+                return Math.pow((b * x - safeC) / (1 - safeC), a);
+            };
+            ctx.clearRect(0, 0, w, h);
+            // グリッド
+            ctx.strokeStyle = '#eee';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            for (let i = 1; i < 10; i++) {
+                ctx.moveTo(i * w / 10, 0); ctx.lineTo(i * w / 10, h);
+                ctx.moveTo(0, i * h / 10); ctx.lineTo(w, i * h / 10);
+            }
+            ctx.stroke();
+            // 曲線
+            ctx.strokeStyle = '#007BFF';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            for (let px = 0; px <= w; px++) {
+                const x = px / w;
+                const py = h - f(x) * h;
+                if (px === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+            }
+            ctx.stroke();
+            // ノード
+            ctx.fillStyle = '#FF3366';
+            ctx.beginPath(); ctx.arc(deadzone * w, h, 3, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(maxT * w, 0, 3, 0, Math.PI * 2); ctx.fill();
+        };
+        ['axp_config_form_pressureA', 'axp_config_form_pressureB', 'axp_config_form_pressureC'].forEach((id) => {
+            const form = document.getElementById(id);
+            if (!form) return;
+            form.addEventListener('input', drawPressureCurve);
+        });
+        // 初回描画 (設定ロード後の値を反映するため少し遅延)
+        setTimeout(drawPressureCurve, 0);
+
         // ラジオボタン：長押しスポイト
         document.getElementById('axp_config_form_useLongtap').onchange = () => {
             this.set_longtap_use();
@@ -1488,6 +1540,13 @@ export class ConfigSystem {
                         pObj[elememtId].radius = Number(value);
                         pObj[elememtId].borderRadius = Number(value);
                         break;
+                    // 筆圧 ON/OFF (ペン別)。筆圧コントロールを持つペンのみ復元する
+                    // (非対応ペンは保存値に関わらず false 維持。古い保存データ対策)
+                    case 'P-USP':
+                        if (pObj[elememtId].usePressureControl) {
+                            pObj[elememtId].usePressure = (value === true || value === 'true');
+                        }
+                        break;
                 }
             }
             return isFound;
@@ -1607,6 +1666,7 @@ export class ConfigSystem {
                 case 'P-TON':
                 case 'P-DEG':
                 case 'P-RAD':
+                case 'P-USP':
                     // 初期化する設定の場合、復元を行わない
                     if (this.axpObj.config('axp_config_form_saveLastPenValue') === 'off') {
                         // スキップしたことを記憶

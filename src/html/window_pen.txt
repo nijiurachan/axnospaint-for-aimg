@@ -80,6 +80,32 @@
                         <input type="checkbox" id="axp_pen_checkbox_usePressure" checked>${_("@PEN.USE_PRESSURE")}
                     </label>
                 </div>
+                <!-- [仮設] ハライ/ハネ チューニング -->
+                <form id="axp_pen_form_flickThreshold" oninput="result.value=(volume.value/10)" class="axpc_range axpc_text_border">
+                    <input type="range" name="volume" min="0" max="20" value="5" step="1">
+                    <div class="axpc_range_label">ハライ閾値</div>
+                    <div class="axpc_range_value"><output name="result">0.5</output></div>
+                </form>
+                <form id="axp_pen_form_flickFactor" oninput="result.value=volume.value" class="axpc_range axpc_text_border">
+                    <input type="range" name="volume" min="0" max="200" value="80" step="5">
+                    <div class="axpc_range_label">テーパ係数</div>
+                    <div class="axpc_range_value"><output name="result">80</output></div>
+                </form>
+                <form id="axp_pen_form_flickMinRatio" oninput="result.value=(volume.value/10)" class="axpc_range axpc_text_border">
+                    <input type="range" name="volume" min="0" max="100" value="30" step="5">
+                    <div class="axpc_range_label">最小倍率</div>
+                    <div class="axpc_range_value"><output name="result">3</output></div>
+                </form>
+                <form id="axp_pen_form_flickMaxRatio" oninput="result.value=(volume.value/10)" class="axpc_range axpc_text_border">
+                    <input type="range" name="volume" min="10" max="300" value="120" step="10">
+                    <div class="axpc_range_label">最大倍率</div>
+                    <div class="axpc_range_value"><output name="result">12</output></div>
+                </form>
+                <form id="axp_pen_form_flickTip" oninput="result.value=(volume.value/100)" class="axpc_range axpc_text_border">
+                    <input type="range" name="volume" min="0" max="50" value="0" step="5">
+                    <div class="axpc_range_label">先端筆圧</div>
+                    <div class="axpc_range_value"><output name="result">0</output></div>
+                </form>
             </div>
 
             <div id="axp_pen_div_spuitColorRGBA">

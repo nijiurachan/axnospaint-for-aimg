@@ -389,6 +389,24 @@ export class PenSystem extends ToolWindow {
             }
         );
 
+        // [仮設] ハライ/ハネ チューニング
+        const flickIds = [
+            ['axp_pen_form_flickThreshold', 'thresholdBase', 10],
+            ['axp_pen_form_flickFactor',    'taperFactor',    1],
+            ['axp_pen_form_flickMinRatio',  'minTaperRatio', 10],
+            ['axp_pen_form_flickMaxRatio',  'maxTaperRatio', 10],
+            ['axp_pen_form_flickTip',       'tipPressure',  100],
+        ];
+        for (const [formId, prop, divisor] of flickIds) {
+            const el = document.getElementById(formId);
+            if (el && el.volume) {
+                el.volume.addEventListener('input', (e) => {
+                    const pen = this.penObj[this.pen_mode];
+                    if (pen && pen.flickTaper) pen.flickTaper[prop] = Number(e.target.value) / divisor;
+                });
+            }
+        }
+
         // キャンバス：ペンの太さプレビュー
         // 原点からの座標に対する角度（0～359）を算出
         const calcDeg = (dy, dx) => {
@@ -853,6 +871,30 @@ export class PenSystem extends ToolWindow {
             }
         }
 
+        // [仮設] ハライ/ハネ チューニング スライダー
+        {
+            const pen = this.penObj[this.pen_mode];
+            const flickFormIds = [
+                'axp_pen_form_flickThreshold', 'axp_pen_form_flickFactor',
+                'axp_pen_form_flickMinRatio', 'axp_pen_form_flickMaxRatio', 'axp_pen_form_flickTip',
+            ];
+            if (pen && pen.usePressureControl && pen.flickTaper) {
+                for (const fid of flickFormIds) UTIL.show(fid);
+                const ft = pen.flickTaper;
+                document.getElementById('axp_pen_form_flickThreshold').volume.value = ft.thresholdBase * 10;
+                document.getElementById('axp_pen_form_flickThreshold').result.value = ft.thresholdBase;
+                document.getElementById('axp_pen_form_flickFactor').volume.value = ft.taperFactor;
+                document.getElementById('axp_pen_form_flickFactor').result.value = ft.taperFactor;
+                document.getElementById('axp_pen_form_flickMinRatio').volume.value = ft.minTaperRatio * 10;
+                document.getElementById('axp_pen_form_flickMinRatio').result.value = ft.minTaperRatio;
+                document.getElementById('axp_pen_form_flickMaxRatio').volume.value = ft.maxTaperRatio * 10;
+                document.getElementById('axp_pen_form_flickMaxRatio').result.value = ft.maxTaperRatio;
+                document.getElementById('axp_pen_form_flickTip').volume.value = ft.tipPressure * 100;
+                document.getElementById('axp_pen_form_flickTip').result.value = ft.tipPressure;
+            } else {
+                for (const fid of flickFormIds) UTIL.hide(fid);
+            }
+        }
 
         // 描画セレクトボックス
         if (this.penObj[this.pen_mode].usePenStyle) {

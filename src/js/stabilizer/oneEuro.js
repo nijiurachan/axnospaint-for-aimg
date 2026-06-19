@@ -3,7 +3,6 @@
 // 位置: 1€フィルタ (時間基準)
 // 筆圧: 窓5メディアン → 空間LPF (波長 λ = stabilizer 値 [px])
 // 補間: 確定点間隔 > gapPx で線形補間
-// 終端: onEnd で 2px のテーパ (筆圧 0 まで線形に落とす)
 //
 // 1€ 参照: Casiez et al. (2012) "1€ Filter: A Simple Speed-based Low-pass Filter
 // for Noisy Input in Interactive Systems"
@@ -80,15 +79,27 @@ export class OneEuroStabilizer {
         this.d_cutoff = 1.0;
         // ペンごとに調節できるピクセル単位パラメータ (StrokePipeline 経由で設定)
         this.startPx = 2.0;  // 開幕この距離までは筆圧 LPF を素通し
-        this.taperPx = 2.0;  // 終端この距離で筆圧 0 までテーパ
+        // 終端ハライ/ハネ (速度依存・筆圧テーパー)。configure で設定。
+        this.enableFlickTaper = false;
+        this.flickTaper = null;
+        this.zoom = 1.0;
+        this.brushWidth = 1.0;
+        this.recent = []; // 直近のフィルタ後点 {x,y,t} (リリース速度/方向の算出用)
+        this.confirmed = []; // ストローク中に emit した確定点 (内挿テーパー再描画用)
+        this._rebuild = null; // 終端テーパー後の全点リスト (consumeRebuild で取り出す)
     }
 
     // ストローク開始時に一括設定する。
-    // stabilizerValue: 0-10 スライダー値 / startPx,taperPx: px 単位
-    configure({ stabilizerValue = 0, startPx = 2.0, taperPx = 2.0 } = {}) {
+    // stabilizerValue: 0-10 スライダー値 / startPx: px 単位
+    // flickTaper/zoom/brushWidth/enableFlickTaper: 終端ハライ用
+    configure({ stabilizerValue = 0, startPx = 2.0,
+        flickTaper = null, zoom = 1.0, brushWidth = 1.0, enableFlickTaper = false } = {}) {
         this.params = mapStabilizerToParams(stabilizerValue);
         this.startPx = startPx;
-        this.taperPx = taperPx;
+        this.flickTaper = flickTaper;
+        this.zoom = (zoom > 0) ? zoom : 1.0;
+        this.brushWidth = (brushWidth > 0) ? brushWidth : 1.0;
+        this.enableFlickTaper = enableFlickTaper && !!flickTaper;
     }
 
     _filterPoint(raw) {
@@ -110,6 +121,7 @@ export class OneEuroStabilizer {
             this.prevY = y;
             this.prevFiltX = x;
             this.prevFiltY = y;
+            this._pushRecent(x, y, t);
             return { x, y, pressure: pMed, t };
         }
 
@@ -145,7 +157,14 @@ export class OneEuroStabilizer {
         this.prevFiltX = xHat;
         this.prevFiltY = yHat;
 
+        this._pushRecent(xHat, yHat, t);
         return { x: xHat, y: yHat, pressure: pHat, t };
+    }
+
+    // 直近のフィルタ後点を保持 (リリース速度/方向の算出用に最大6点)
+    _pushRecent(x, y, t) {
+        this.recent.push({ x, y, t });
+        if (this.recent.length > 6) this.recent.shift();
     }
 
     onStart(raw) {
@@ -162,9 +181,13 @@ export class OneEuroStabilizer {
         this.prevFiltY = null;
         this.cumDist = 0;
         this.lastCommitted = null;
+        this.recent = [];
+        this.confirmed = [];
+        this._rebuild = null;
 
         const fp = this._filterPoint(raw);
         this.lastCommitted = fp;
+        this.confirmed.push(fp);
         return [fp];
     }
 
@@ -175,14 +198,121 @@ export class OneEuroStabilizer {
     }
 
     onEnd(raw, gapPx) {
+        // pointerup は筆圧0 を報告しがち。終端サンプルは位置のみ採用し、
+        // 筆圧は直前の確定値を引き継いで median を汚さない (末端が不自然に細るのを防ぐ)。
+        const endRaw = (this.lastCommitted !== null)
+            ? { ...raw, pressure: this.lastCommitted.pressure }
+            : raw;
+        const fp = this._filterPoint(endRaw);
         if (this.lastCommitted === null) {
-            const fp = this._filterPoint(raw);
             this.lastCommitted = fp;
-            return [this._taperOnly(fp)];
+            this.confirmed.push(fp);
+            return [fp];
         }
-        const fp = this._filterPoint(raw);
         const out = this._emit(fp, gapPx);
-        this._appendTaper(out);
+        // 終端ハライ/ハネ: リリース速度がしきい値を超えたら、既存ストローク終端へ
+        // 食い込む内挿テーパー＋進行方向への外挿テーパーを付与し、全点再描画用リストを作る。
+        this._rebuild = null;
+        if (this.enableFlickTaper) {
+            this._rebuild = this._buildFlickTaper(gapPx);
+        }
+        return out;
+    }
+
+    // 終端テーパー後の全確定点リストを取り出す (取り出し後はクリア)。
+    // null = テーパー無し (通常の逐次描画でよい)。
+    consumeRebuild() {
+        const r = this._rebuild;
+        this._rebuild = null;
+        return r;
+    }
+
+    // 終端ハライ/ハネ・テーパー: 内挿(既存終端へ食い込み)＋外挿(進行方向へ延長)。
+    // 条件を満たせば「全確定点(終端は筆圧上書き済み) + 外挿点」のリストを返す。満たさなければ null。
+    _buildFlickTaper(gapPx) {
+        const ft = this.flickTaper;
+        const pts = this.confirmed;
+        if (!ft || pts.length < 2 || this.recent.length < 2) return null;
+
+        // 直近 ~24ms (最低2点) の窓で リリース方向(フィルタ後で安定) と 速度 v[px/ms] を算出
+        const last = this.recent[this.recent.length - 1];
+        let ri = this.recent.length - 2;
+        while (ri > 0 && (last.t - this.recent[ri].t) < 24) ri--;
+        const ref = this.recent[ri];
+        const rdx = last.x - ref.x;
+        const rdy = last.y - ref.y;
+        const rdist = Math.hypot(rdx, rdy);
+        const rdt = Math.max(1, last.t - ref.t);
+        if (rdist < 1e-3) return null; // 方向不定 (静止) はハライ無し
+        const v = rdist / rdt; // canvas px/ms
+        const ux = rdx / rdist;
+        const uy = rdy / rdist;
+
+        // ハライ判定速度 (高ズームでは閾値を下げる: Z^-0.5)
+        const threshold = ft.thresholdBase * Math.pow(this.zoom, -0.5);
+        if (v <= threshold) return null;
+
+        // テーパ長: 速度依存。下限=幅×min倍率、上限=(幅+4)×max倍率 (細ペンでもハライ出るよう+4)
+        const minT = this.brushWidth * ft.minTaperRatio;
+        const maxT = (this.brushWidth + 4) * ft.maxTaperRatio;
+        const taperDist = Math.min(Math.max(v * ft.taperFactor, minT), maxT);
+        const extrapRatio = Math.min(Math.max(ft.extrapRatio, 0), 0.8);
+        const extrapDist = taperDist * extrapRatio;
+        const interpDist = taperDist * (1 - extrapRatio);
+
+        // バックトラック: 終点から遡り、内挿テーパ開始点を決める。
+        // 終了条件: 「局所速度 < v/2 を2点連続」 または 「遡及距離が interpDist 到達」。
+        // ※ 区間を必ず先に加算してから距離判定する。先に判定して除外すると、初回区間が
+        //    interpDist を超えるケースで acc=0 となり、0%外挿時に span=0→null でテーパーが
+        //    無効化されてしまう (最低1区間は内挿に含める。超過は最大1区間ぶんで無害)。
+        const n = pts.length;
+        let startIdx = n - 1;
+        let acc = 0; // 実内挿テーパ距離
+        let lowCount = 0;
+        for (let i = n - 1; i >= 1; i--) {
+            const a = pts[i - 1];
+            const b = pts[i];
+            const segDist = Math.hypot(b.x - a.x, b.y - a.y);
+            const segDt = Math.max(1, b.t - a.t);
+            const vi = segDist / segDt;
+            if (vi < v * 0.5) lowCount++; else lowCount = 0;
+            acc += segDist;
+            startIdx = i - 1;
+            if (acc >= interpDist) break;   // 距離上限 (現区間を含めて到達)
+            if (lowCount >= 2) break;        // 速度低下が2点連続
+        }
+        const actualInterpDist = acc;
+        const span = actualInterpDist + extrapDist;
+        if (span <= 1e-3) return null; // テーパー区間が無い
+
+        // 筆圧テーパー: 開始点筆圧 P0 をベースに、span にわたり 0 へ線形ランプ。
+        const P0 = pts[startIdx].pressure;
+        let distFromStart = 0;
+        for (let i = startIdx; i < n; i++) {
+            if (i > startIdx) {
+                distFromStart += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+            }
+            const ramp = Math.max(0, 1 - distFromStart / span);
+            pts[i] = { ...pts[i], pressure: P0 * ramp };
+        }
+
+        // 外挿点: 終点から進行方向へ gap 間隔で extrapDist ぶん追加 (終端で筆圧0)。
+        const endPt = pts[n - 1];
+        const gap = (gapPx && gapPx > 0) ? gapPx : 6.0;
+        const out = pts.slice();
+        if (extrapDist > 1e-3) {
+            const steps = Math.max(1, Math.ceil(extrapDist / gap));
+            for (let s = 1; s <= steps; s++) {
+                const dd = extrapDist * s / steps;
+                const ramp = Math.max(0, 1 - (actualInterpDist + dd) / span);
+                out.push({
+                    x: endPt.x + ux * dd,
+                    y: endPt.y + uy * dd,
+                    pressure: P0 * ramp,
+                    t: endPt.t,
+                });
+            }
+        }
         return out;
     }
 
@@ -207,45 +337,7 @@ export class OneEuroStabilizer {
         }
         out.push(fp);
         this.lastCommitted = fp;
+        for (const p of out) this.confirmed.push(p);
         return out;
-    }
-
-    // 終端テーパ: 末尾点を「taperPx 手前 knee + 末尾 tip(pressure=0)」に展開
-    _appendTaper(out) {
-        const taperLen = this.taperPx;
-        if (taperLen <= 0 || out.length === 0) return;
-        const last = out[out.length - 1];
-        // 方向ベクトル: out 内の直前点 → last。なければ stabilizer の lastCommitted 直前
-        let dirX = 0, dirY = 0, d = 0;
-        if (out.length >= 2) {
-            const p = out[out.length - 2];
-            dirX = last.x - p.x;
-            dirY = last.y - p.y;
-            d = Math.hypot(dirX, dirY);
-        }
-        if (d > taperLen) {
-            const ux = dirX / d;
-            const uy = dirY / d;
-            // 2px 手前に knee (last の筆圧をそのまま採用)
-            const knee = {
-                x: last.x - ux * taperLen,
-                y: last.y - uy * taperLen,
-                pressure: last.pressure,
-                t: last.t,
-            };
-            // last 自体を pressure=0 にして tip 化
-            const tip = { x: last.x, y: last.y, pressure: 0, t: last.t };
-            out[out.length - 1] = knee;
-            out.push(tip);
-            this.lastCommitted = tip;
-        } else {
-            // 区間が短い: 末尾点を pressure=0 にするだけ
-            last.pressure = 0;
-        }
-    }
-
-    // 開始即終了用 (stroke 内に確定点 1 つしかない時)
-    _taperOnly(fp) {
-        return { x: fp.x, y: fp.y, pressure: 0, t: fp.t };
     }
 }

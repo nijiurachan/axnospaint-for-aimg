@@ -1,5 +1,5 @@
 /*!
- * AXNOS Paint w/ nijiurachan custom version 3.0.0-alpha (2026-06-17T01:11:40.099Z)
+ * AXNOS Paint w/ nijiurachan custom version 3.0.0-alpha (2026-06-19T13:20:11.089Z)
  * (c) 2026- nijiurachan contributors
  * (c) 2022「悪の巣」部屋番号13番：「趣味の悪い大衆酒場[Mad end dance hall]」
  * Licensed under MPL 2.0
@@ -7903,7 +7903,7 @@ class ConfigSystem {
         let targetElement = document.getElementById('axp_config');
         targetElement.insertAdjacentHTML('afterbegin', this.axpObj.translateHTML(_html_config_txt__WEBPACK_IMPORTED_MODULE_2__));
         // バージョン情報の表示
-        document.getElementById('axp_config_div_versionInfo').textContent = `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-06-17T01:11:40.099Z"})`
+        document.getElementById('axp_config_div_versionInfo').textContent = `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-06-19T13:20:11.089Z"})`
     }
     // HTML展開
     deployHTML() {
@@ -11115,21 +11115,36 @@ class StampPenBase extends _drawingpen_js__WEBPACK_IMPORTED_MODULE_0__.DrawingPe
     constructor(option) {
         super(option);
         // ピクセル単位の調節パラメータ (ペンごとに override 可)
-        this.endTaperPx = 2;   // 終端テーパ長 (意図しない強点の抑制)
         this.startRawPx = 2;   // 開幕この距離まで筆圧フィルタを素通し
         this.subPxFloor = 0.5; // サブピクセル幅の形状下限
+        // 終端ハライ/ハネ (速度依存・筆圧テーパー)。筆圧ペンのみ有効。具体ペンで上書き可。
+        this.flickTaper = {
+            enabled: true,
+            thresholdBase: 0.1,   // ハライ判定速度 [canvas px/ms] (Z^-0.5 補正前)
+            taperFactor: 40,      // テーパ長[px] = v[px/ms] × factor[ms] (実質ルックアヘッドms)
+            minTaperRatio: 2.0,   // 下限 = ブラシ幅 × この倍率
+            maxTaperRatio: 7.0,   // 上限 = (ブラシ幅 + 4px) × この倍率 (細ペンでもハライ出るよう+4)
+            extrapRatio: 0.15,    // テーパ距離のうち外挿(進行方向への延長)が占める比率 (0〜0.8)
+        };
     }
 
     // 描画開始
     start(x, y, e, option) {
         if (!this._startCommon(x, y, option)) return;
 
+        // ハライは筆圧ペン入力時のみ。マウス/タッチは筆圧一定のため誤発火させない。
+        const isPenInput = !!(e && e.pointerType === 'pen');
         this.pipeline = new _stabilizer_strokePipeline_js__WEBPACK_IMPORTED_MODULE_2__.StrokePipeline();
         this.pipeline.configure({
             ...(0,_stabilizer_strokePipeline_js__WEBPACK_IMPORTED_MODULE_2__.readStrokeSettings)(),
             usePressure: this.usePressure,
             startPx: this.startRawPx,
-            endTaperPx: this.endTaperPx,
+            flickTaper: this.flickTaper,
+            zoom: this.axpObj.scale / 100,
+            brushWidth: this.size,
+            // 非筆圧ペンは半径が筆圧非依存のため、延長すると等幅で伸びてしまう → usePressure と pen で gate
+            // (flickTaper は具体ペンで null 上書き可のため null ガードする)
+            enableFlickTaper: this.usePressure && !!this.flickTaper && this.flickTaper.enabled && isPenInput,
         });
         this.lastCommitted = null;
 
@@ -11173,6 +11188,18 @@ class StampPenBase extends _drawingpen_js__WEBPACK_IMPORTED_MODULE_0__.DrawingPe
                 for (const cp of commits) {
                     this._drawSegment(this.lastCommitted, cp);
                     this.lastCommitted = cp;
+                }
+                // 終端ハライ/ハネ・テーパー: 既存終端の筆圧を遡って下げる必要があるため、
+                // ブラシキャンバスを clear し、テーパー後の全確定点を再描画する (write が
+                // レイヤー再ロード後にブラシ全体を1回合成するため二重濃化は起きない)。
+                const rebuild = this.pipeline.consumeRebuild();
+                if (rebuild && rebuild.length > 0) {
+                    this.CANVAS.brush_ctx.clearRect(0, 0, this.axpObj.x_size, this.axpObj.y_size);
+                    this.lastCommitted = null;
+                    for (const cp of rebuild) {
+                        this._drawSegment(this.lastCommitted, cp);
+                        this.lastCommitted = cp;
+                    }
                 }
                 this.write();
             } else {
@@ -14525,7 +14552,6 @@ __webpack_require__.r(__webpack_exports__);
 // 位置: 1€フィルタ (時間基準)
 // 筆圧: 窓5メディアン → 空間LPF (波長 λ = stabilizer 値 [px])
 // 補間: 確定点間隔 > gapPx で線形補間
-// 終端: onEnd で 2px のテーパ (筆圧 0 まで線形に落とす)
 //
 // 1€ 参照: Casiez et al. (2012) "1€ Filter: A Simple Speed-based Low-pass Filter
 // for Noisy Input in Interactive Systems"
@@ -14602,15 +14628,27 @@ class OneEuroStabilizer {
         this.d_cutoff = 1.0;
         // ペンごとに調節できるピクセル単位パラメータ (StrokePipeline 経由で設定)
         this.startPx = 2.0;  // 開幕この距離までは筆圧 LPF を素通し
-        this.taperPx = 2.0;  // 終端この距離で筆圧 0 までテーパ
+        // 終端ハライ/ハネ (速度依存・筆圧テーパー)。configure で設定。
+        this.enableFlickTaper = false;
+        this.flickTaper = null;
+        this.zoom = 1.0;
+        this.brushWidth = 1.0;
+        this.recent = []; // 直近のフィルタ後点 {x,y,t} (リリース速度/方向の算出用)
+        this.confirmed = []; // ストローク中に emit した確定点 (内挿テーパー再描画用)
+        this._rebuild = null; // 終端テーパー後の全点リスト (consumeRebuild で取り出す)
     }
 
     // ストローク開始時に一括設定する。
-    // stabilizerValue: 0-10 スライダー値 / startPx,taperPx: px 単位
-    configure({ stabilizerValue = 0, startPx = 2.0, taperPx = 2.0 } = {}) {
+    // stabilizerValue: 0-10 スライダー値 / startPx: px 単位
+    // flickTaper/zoom/brushWidth/enableFlickTaper: 終端ハライ用
+    configure({ stabilizerValue = 0, startPx = 2.0,
+        flickTaper = null, zoom = 1.0, brushWidth = 1.0, enableFlickTaper = false } = {}) {
         this.params = mapStabilizerToParams(stabilizerValue);
         this.startPx = startPx;
-        this.taperPx = taperPx;
+        this.flickTaper = flickTaper;
+        this.zoom = (zoom > 0) ? zoom : 1.0;
+        this.brushWidth = (brushWidth > 0) ? brushWidth : 1.0;
+        this.enableFlickTaper = enableFlickTaper && !!flickTaper;
     }
 
     _filterPoint(raw) {
@@ -14632,6 +14670,7 @@ class OneEuroStabilizer {
             this.prevY = y;
             this.prevFiltX = x;
             this.prevFiltY = y;
+            this._pushRecent(x, y, t);
             return { x, y, pressure: pMed, t };
         }
 
@@ -14667,7 +14706,14 @@ class OneEuroStabilizer {
         this.prevFiltX = xHat;
         this.prevFiltY = yHat;
 
+        this._pushRecent(xHat, yHat, t);
         return { x: xHat, y: yHat, pressure: pHat, t };
+    }
+
+    // 直近のフィルタ後点を保持 (リリース速度/方向の算出用に最大6点)
+    _pushRecent(x, y, t) {
+        this.recent.push({ x, y, t });
+        if (this.recent.length > 6) this.recent.shift();
     }
 
     onStart(raw) {
@@ -14684,9 +14730,13 @@ class OneEuroStabilizer {
         this.prevFiltY = null;
         this.cumDist = 0;
         this.lastCommitted = null;
+        this.recent = [];
+        this.confirmed = [];
+        this._rebuild = null;
 
         const fp = this._filterPoint(raw);
         this.lastCommitted = fp;
+        this.confirmed.push(fp);
         return [fp];
     }
 
@@ -14697,14 +14747,121 @@ class OneEuroStabilizer {
     }
 
     onEnd(raw, gapPx) {
+        // pointerup は筆圧0 を報告しがち。終端サンプルは位置のみ採用し、
+        // 筆圧は直前の確定値を引き継いで median を汚さない (末端が不自然に細るのを防ぐ)。
+        const endRaw = (this.lastCommitted !== null)
+            ? { ...raw, pressure: this.lastCommitted.pressure }
+            : raw;
+        const fp = this._filterPoint(endRaw);
         if (this.lastCommitted === null) {
-            const fp = this._filterPoint(raw);
             this.lastCommitted = fp;
-            return [this._taperOnly(fp)];
+            this.confirmed.push(fp);
+            return [fp];
         }
-        const fp = this._filterPoint(raw);
         const out = this._emit(fp, gapPx);
-        this._appendTaper(out);
+        // 終端ハライ/ハネ: リリース速度がしきい値を超えたら、既存ストローク終端へ
+        // 食い込む内挿テーパー＋進行方向への外挿テーパーを付与し、全点再描画用リストを作る。
+        this._rebuild = null;
+        if (this.enableFlickTaper) {
+            this._rebuild = this._buildFlickTaper(gapPx);
+        }
+        return out;
+    }
+
+    // 終端テーパー後の全確定点リストを取り出す (取り出し後はクリア)。
+    // null = テーパー無し (通常の逐次描画でよい)。
+    consumeRebuild() {
+        const r = this._rebuild;
+        this._rebuild = null;
+        return r;
+    }
+
+    // 終端ハライ/ハネ・テーパー: 内挿(既存終端へ食い込み)＋外挿(進行方向へ延長)。
+    // 条件を満たせば「全確定点(終端は筆圧上書き済み) + 外挿点」のリストを返す。満たさなければ null。
+    _buildFlickTaper(gapPx) {
+        const ft = this.flickTaper;
+        const pts = this.confirmed;
+        if (!ft || pts.length < 2 || this.recent.length < 2) return null;
+
+        // 直近 ~24ms (最低2点) の窓で リリース方向(フィルタ後で安定) と 速度 v[px/ms] を算出
+        const last = this.recent[this.recent.length - 1];
+        let ri = this.recent.length - 2;
+        while (ri > 0 && (last.t - this.recent[ri].t) < 24) ri--;
+        const ref = this.recent[ri];
+        const rdx = last.x - ref.x;
+        const rdy = last.y - ref.y;
+        const rdist = Math.hypot(rdx, rdy);
+        const rdt = Math.max(1, last.t - ref.t);
+        if (rdist < 1e-3) return null; // 方向不定 (静止) はハライ無し
+        const v = rdist / rdt; // canvas px/ms
+        const ux = rdx / rdist;
+        const uy = rdy / rdist;
+
+        // ハライ判定速度 (高ズームでは閾値を下げる: Z^-0.5)
+        const threshold = ft.thresholdBase * Math.pow(this.zoom, -0.5);
+        if (v <= threshold) return null;
+
+        // テーパ長: 速度依存。下限=幅×min倍率、上限=(幅+4)×max倍率 (細ペンでもハライ出るよう+4)
+        const minT = this.brushWidth * ft.minTaperRatio;
+        const maxT = (this.brushWidth + 4) * ft.maxTaperRatio;
+        const taperDist = Math.min(Math.max(v * ft.taperFactor, minT), maxT);
+        const extrapRatio = Math.min(Math.max(ft.extrapRatio, 0), 0.8);
+        const extrapDist = taperDist * extrapRatio;
+        const interpDist = taperDist * (1 - extrapRatio);
+
+        // バックトラック: 終点から遡り、内挿テーパ開始点を決める。
+        // 終了条件: 「局所速度 < v/2 を2点連続」 または 「遡及距離が interpDist 到達」。
+        // ※ 区間を必ず先に加算してから距離判定する。先に判定して除外すると、初回区間が
+        //    interpDist を超えるケースで acc=0 となり、0%外挿時に span=0→null でテーパーが
+        //    無効化されてしまう (最低1区間は内挿に含める。超過は最大1区間ぶんで無害)。
+        const n = pts.length;
+        let startIdx = n - 1;
+        let acc = 0; // 実内挿テーパ距離
+        let lowCount = 0;
+        for (let i = n - 1; i >= 1; i--) {
+            const a = pts[i - 1];
+            const b = pts[i];
+            const segDist = Math.hypot(b.x - a.x, b.y - a.y);
+            const segDt = Math.max(1, b.t - a.t);
+            const vi = segDist / segDt;
+            if (vi < v * 0.5) lowCount++; else lowCount = 0;
+            acc += segDist;
+            startIdx = i - 1;
+            if (acc >= interpDist) break;   // 距離上限 (現区間を含めて到達)
+            if (lowCount >= 2) break;        // 速度低下が2点連続
+        }
+        const actualInterpDist = acc;
+        const span = actualInterpDist + extrapDist;
+        if (span <= 1e-3) return null; // テーパー区間が無い
+
+        // 筆圧テーパー: 開始点筆圧 P0 をベースに、span にわたり 0 へ線形ランプ。
+        const P0 = pts[startIdx].pressure;
+        let distFromStart = 0;
+        for (let i = startIdx; i < n; i++) {
+            if (i > startIdx) {
+                distFromStart += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+            }
+            const ramp = Math.max(0, 1 - distFromStart / span);
+            pts[i] = { ...pts[i], pressure: P0 * ramp };
+        }
+
+        // 外挿点: 終点から進行方向へ gap 間隔で extrapDist ぶん追加 (終端で筆圧0)。
+        const endPt = pts[n - 1];
+        const gap = (gapPx && gapPx > 0) ? gapPx : 6.0;
+        const out = pts.slice();
+        if (extrapDist > 1e-3) {
+            const steps = Math.max(1, Math.ceil(extrapDist / gap));
+            for (let s = 1; s <= steps; s++) {
+                const dd = extrapDist * s / steps;
+                const ramp = Math.max(0, 1 - (actualInterpDist + dd) / span);
+                out.push({
+                    x: endPt.x + ux * dd,
+                    y: endPt.y + uy * dd,
+                    pressure: P0 * ramp,
+                    t: endPt.t,
+                });
+            }
+        }
         return out;
     }
 
@@ -14729,46 +14886,8 @@ class OneEuroStabilizer {
         }
         out.push(fp);
         this.lastCommitted = fp;
+        for (const p of out) this.confirmed.push(p);
         return out;
-    }
-
-    // 終端テーパ: 末尾点を「taperPx 手前 knee + 末尾 tip(pressure=0)」に展開
-    _appendTaper(out) {
-        const taperLen = this.taperPx;
-        if (out.length === 0) return;
-        const last = out[out.length - 1];
-        // 方向ベクトル: out 内の直前点 → last。なければ stabilizer の lastCommitted 直前
-        let dirX = 0, dirY = 0, d = 0;
-        if (out.length >= 2) {
-            const p = out[out.length - 2];
-            dirX = last.x - p.x;
-            dirY = last.y - p.y;
-            d = Math.hypot(dirX, dirY);
-        }
-        if (d > taperLen) {
-            const ux = dirX / d;
-            const uy = dirY / d;
-            // 2px 手前に knee (last の筆圧をそのまま採用)
-            const knee = {
-                x: last.x - ux * taperLen,
-                y: last.y - uy * taperLen,
-                pressure: last.pressure,
-                t: last.t,
-            };
-            // last 自体を pressure=0 にして tip 化
-            const tip = { x: last.x, y: last.y, pressure: 0, t: last.t };
-            out[out.length - 1] = knee;
-            out.push(tip);
-            this.lastCommitted = tip;
-        } else {
-            // 区間が短い: 末尾点を pressure=0 にするだけ
-            last.pressure = 0;
-        }
-    }
-
-    // 開始即終了用 (stroke 内に確定点 1 つしかない時)
-    _taperOnly(fp) {
-        return { x: fp.x, y: fp.y, pressure: 0, t: fp.t };
     }
 }
 
@@ -14793,7 +14912,6 @@ __webpack_require__.r(__webpack_exports__);
 //   raw 点群 {x, y, rawPressure, pointerType, t}
 //     ↓ 筆圧カーブ変換 (入力筆圧 → 出力筆圧)
 //     ↓ 手ブレ補正 (位置: 1€ / 筆圧: median5 + 空間LPF、開幕 startPx は素通し)
-//     ↓ 終端テーパ (endTaperPx)
 //     ↓ 確定点ストリーム {x, y, pressure, t} を emit (gap で線形補間)
 //
 // 設定 (手ブレ強度・筆圧カーブ) の DOM 読み取りは readStrokeSettings() に集約し、
@@ -14831,11 +14949,13 @@ class StrokePipeline {
     // ストローク開始時に一括設定。
     //   stabilizerValue / pressureCurve … readStrokeSettings() の戻り値
     //   usePressure … 筆圧を採用するか (ペン側のフラグ)
-    //   startPx / endTaperPx … ペンごとに調節可能なピクセル単位パラメータ
-    configure({ stabilizerValue = 0, pressureCurve, usePressure = false, startPx = 2, endTaperPx = 2 } = {}) {
+    //   startPx … 開幕の筆圧フィルタ素通し距離 (ペンごとに調節可能)
+    //   flickTaper/zoom/brushWidth/enableFlickTaper … 終端ハライ/ハネ用 (smoother へ転送)
+    configure({ stabilizerValue = 0, pressureCurve, usePressure = false, startPx = 2,
+        flickTaper = null, zoom = 1.0, brushWidth = 1.0, enableFlickTaper = false } = {}) {
         this.usePressure = usePressure;
         if (pressureCurve) this.pressureCurve = pressureCurve;
-        this.smoother.configure({ stabilizerValue, startPx, taperPx: endTaperPx });
+        this.smoother.configure({ stabilizerValue, startPx, flickTaper, zoom, brushWidth, enableFlickTaper });
     }
 
     // 入力筆圧 → 出力筆圧。
@@ -14860,6 +14980,9 @@ class StrokePipeline {
     onStart(input) { return this.smoother.onStart(this._raw(input)); }
     onMove(input, gapPx) { return this.smoother.onMove(this._raw(input), gapPx); }
     onEnd(input, gapPx) { return this.smoother.onEnd(this._raw(input), gapPx); }
+
+    // 終端テーパー後の全点再描画リストを取り出す (null=テーパー無し)。onEnd 後に呼ぶ。
+    consumeRebuild() { return this.smoother.consumeRebuild(); }
 }
 
 
@@ -19021,6 +19144,24 @@ class PenSystem extends _window_js__WEBPACK_IMPORTED_MODULE_0__.ToolWindow {
             }
         );
 
+        // [仮設] ハライ/ハネ チューニング
+        const flickIds = [
+            ['axp_pen_form_flickThreshold', 'thresholdBase', 100],
+            ['axp_pen_form_flickFactor',    'taperFactor',     1],
+            ['axp_pen_form_flickMinRatio',  'minTaperRatio',  10],
+            ['axp_pen_form_flickMaxRatio',  'maxTaperRatio',  10],
+            ['axp_pen_form_flickExtrap',    'extrapRatio',   100],
+        ];
+        for (const [formId, prop, divisor] of flickIds) {
+            const el = document.getElementById(formId);
+            if (el && el.volume) {
+                el.volume.addEventListener('input', (e) => {
+                    const pen = this.penObj[this.pen_mode];
+                    if (pen && pen.flickTaper) pen.flickTaper[prop] = Number(e.target.value) / divisor;
+                });
+            }
+        }
+
         // キャンバス：ペンの太さプレビュー
         // 原点からの座標に対する角度（0～359）を算出
         const calcDeg = (dy, dx) => {
@@ -19485,6 +19626,30 @@ class PenSystem extends _window_js__WEBPACK_IMPORTED_MODULE_0__.ToolWindow {
             }
         }
 
+        // [仮設] ハライ/ハネ チューニング スライダー
+        {
+            const pen = this.penObj[this.pen_mode];
+            const flickFormIds = [
+                'axp_pen_form_flickThreshold', 'axp_pen_form_flickFactor',
+                'axp_pen_form_flickMinRatio', 'axp_pen_form_flickMaxRatio', 'axp_pen_form_flickExtrap',
+            ];
+            if (pen && pen.usePressureControl && pen.flickTaper) {
+                for (const fid of flickFormIds) _etc_js__WEBPACK_IMPORTED_MODULE_4__.UTIL.show(fid);
+                const ft = pen.flickTaper;
+                document.getElementById('axp_pen_form_flickThreshold').volume.value = ft.thresholdBase * 100;
+                document.getElementById('axp_pen_form_flickThreshold').result.value = ft.thresholdBase;
+                document.getElementById('axp_pen_form_flickFactor').volume.value = ft.taperFactor;
+                document.getElementById('axp_pen_form_flickFactor').result.value = ft.taperFactor;
+                document.getElementById('axp_pen_form_flickMinRatio').volume.value = ft.minTaperRatio * 10;
+                document.getElementById('axp_pen_form_flickMinRatio').result.value = ft.minTaperRatio;
+                document.getElementById('axp_pen_form_flickMaxRatio').volume.value = ft.maxTaperRatio * 10;
+                document.getElementById('axp_pen_form_flickMaxRatio').result.value = ft.maxTaperRatio;
+                document.getElementById('axp_pen_form_flickExtrap').volume.value = ft.extrapRatio * 100;
+                document.getElementById('axp_pen_form_flickExtrap').result.value = ft.extrapRatio * 100;
+            } else {
+                for (const fid of flickFormIds) _etc_js__WEBPACK_IMPORTED_MODULE_4__.UTIL.hide(fid);
+            }
+        }
 
         // 描画セレクトボックス
         if (this.penObj[this.pen_mode].usePenStyle) {
@@ -20798,7 +20963,7 @@ module.exports = "<!-- パレット -->\n<div class=\"axpc_window_content\">\n  
   \*********************************/
 /***/ ((module) => {
 
-module.exports = "<!-- ペンツール -->\n<div class=\"axpc_window_content\">\n    <div id=\"axp_pen_div_content\">\n        <!-- ペンツール左側 -->\n        <div id=\"axp_pen_div_leftSide\">\n            <span id=\"axp_pen_span_penName\" class=\"axpc_MSG\" data-msg=\"@PEN0001\"></span>\n            <!-- プレビュー領域 -->\n            <div id=\"axp_pen_div_preview\" class=\"axpc_MSG\" data-msg=\"@PEN0200\">\n                <canvas id=\"axp_pen_canvas_previewPenSize\"></canvas>\n                <canvas id=\"axp_pen_canvas_previewSpuit\"></canvas>\n            </div>\n            <!-- スライダー領域 -->\n            <div id=\"axp_pen_div_slider\">\n                <!-- ペンの不透明度 -->\n                <form id=\"axp_pen_form_alpha\" class=\"axpc_range axpc_text_border\"\n                    oninput=\"result.value=parseInt(volume.value)\">\n                    <input type=\"range\" id=\"axp_pen_range_alpha\" name=\"volume\" min=\"5\" max=\"100\" value=\"100\" step=\"5\"\n                        class=\"axpc_MSG\" data-msg=\"@PEN0002\">\n                    <div class=\"axpc_range_label\">${_(\"@COMMON.OPACITY\")}</div>\n                    <div class=\"axpc_range_value\"><output name=\"result\"></output></div>\n                </form>\n                <!-- ペンの太さ -->\n                <form id=\"axp_pen_form_penSize\" class=\"axpc_range axpc_text_border\">\n                    <input type=\"range\" id=\"axp_pen_range_penSize\" name=\"volume\" min=\"1\" max=\"100\" value=\"1\" step=\"1\"\n                        class=\"axpc_MSG\" data-msg=\"@PEN0003\">\n                    <div class=\"axpc_range_label\">${_(\"@PEN.SIZE\")}</div>\n                    <div class=\"axpc_range_value\"><output name=\"result\"></output></div>\n                </form>\n                <!-- バケツの境界補正 -->\n                <form id=\"axp_pen_form_fillThreshold\" oninput=\"result.value=parseInt(volume.value)\"\n                    class=\"axpc_range axpc_text_border\">\n                    <input type=\"range\" id=\"axp_pen_range_fillThreshold\" name=\"volume\" value=\"0\" step=\"1\" min=\"0\"\n                        max=\"5\" class=\"axpc_MSG\" data-msg=\"@PEN0004\">\n                    <div class=\"axpc_range_label\">${_(\"@PEN.GROW_FILL_AREA\")}</div>\n                    <div class=\"axpc_range_value\"><output name=\"result\"></output></div>\n                </form>\n                <!-- バケツのグラデーション角度 -->\n                <form id=\"axp_pen_form_fillGradationDeg\" oninput=\"result.value=parseInt(volume.value)\"\n                    class=\"axpc_range axpc_text_border\">\n                    <input type=\"range\" id=\"axp_pen_range_fillGradationDeg\" name=\"volume\" value=\"0\" step=\"15\" min=\"0\"\n                        max=\"360\" class=\"axpc_MSG\" data-msg=\"@PEN0005\">\n                    <div class=\"axpc_range_label\">${_(\"@PEN.ANGLE\")}</div>\n                    <div class=\"axpc_range_value\"><output name=\"result\"></output></div>\n                </form>\n                <!-- クレヨンの丸み -->\n                <form id=\"axp_pen_form_radius\" oninput=\"result.value=parseInt(volume.value)\"\n                    class=\"axpc_range axpc_text_border\">\n                    <input type=\"range\" id=\"axp_pen_range_radius\" name=\"volume\" value=\"50\" step=\"1\" min=\"0\" max=\"50\"\n                        class=\"axpc_MSG\" data-msg=\"@PEN0010\">\n                    <div class=\"axpc_range_label\">${_(\"@PEN.ROUNDNESS\")}</div>\n                    <div class=\"axpc_range_value\"><output name=\"result\"></output></div>\n                </form>\n                <!-- ぼかし度（オプション） -->\n                <form id=\"axp_pen_form_blur\" oninput=\"result.value=parseInt(volume.value)\"\n                    class=\"axpc_range axpc_text_border\">\n                    <input type=\"range\" id=\"axp_pen_range_blur\" name=\"volume\" value=\"0\" step=\"1\" min=\"0\" max=\"5\"\n                        class=\"axpc_MSG\" data-msg=\"@PEN0009\">\n                    <div class=\"axpc_range_label\">${_(\"@PEN.BLUR\")}</div>\n                    <div class=\"axpc_range_value\"><output name=\"result\"></output></div>\n                </form>\n                <!-- トーン濃度（オプション） -->\n                <form id=\"axp_pen_form_toneLevel\" oninput=\"result.value=parseInt(volume.value)\"\n                    class=\"axpc_range axpc_text_border\">\n                    <input type=\"range\" id=\"axp_pen_range_toneLevel\" name=\"volume\" value=\"16\" step=\"1\" min=\"1\" max=\"16\"\n                        class=\"axpc_MSG\" data-msg=\"@PEN0006\">\n                    <div class=\"axpc_range_label\">${_(\"@PEN.TONE_DENSITY\")}</div>\n                    <div class=\"axpc_range_value\"><output name=\"result\"></output></div>\n                </form>\n                <!-- 手ぶれ補正（オプション） -->\n                <form id=\"axp_pen_form_stabilizer\" oninput=\"result.value=parseInt(volume.value)\"\n                    class=\"axpc_range axpc_text_border\">\n                    <input type=\"range\" id=\"axp_pen_range_stabilizer\" name=\"volume\" value=\"2\" step=\"1\" min=\"0\" max=\"10\"\n                        class=\"axpc_MSG\" data-msg=\"@CFG0040\">\n                    <div class=\"axpc_range_label\">${_(\"@PEN.STABILIZER\")}</div>\n                    <div class=\"axpc_range_value\"><output name=\"result\"></output></div>\n                </form>\n                <!-- 筆圧 ON/OFF（オプション、ペン別） -->\n                <div id=\"axp_pen_form_usePressure\" class=\"axpc_checkbox axpc_text_border\">\n                    <label>\n                        <input type=\"checkbox\" id=\"axp_pen_checkbox_usePressure\" checked>${_(\"@PEN.USE_PRESSURE\")}\n                    </label>\n                </div>\n            </div>\n\n            <div id=\"axp_pen_div_spuitColorRGBA\">\n                <div>${_(\"@COMMON.RED\")}:<span id=\"axp_pen_span_spuitColorRed\">-</span></div>\n                <div>${_(\"@COMMON.GREEN\")}:<span id=\"axp_pen_span_spuitColorGreen\">-</span></div>\n                <div>${_(\"@COMMON.BLUE\")}:<span id=\"axp_pen_span_spuitColorBlue\">-</span></div>\n                <div>${_(\"@COMMON.ALPHA\")}:<span id=\"axp_pen_span_spuitColorAlpha\">-</span></div>\n            </div>\n\n            <div id=\"axp_pen_div_selectbox\">\n                <select id=\"axp_pen_select_drawMode\" class=\"axpc_MSG\" data-msg=\"@PEN0007\">\n                    <option value=\"option_normal\">${_(\"@PEN.OPTION_FREE_HAND\")}</option>\n                    <option value=\"option_line\">${_(\"@PEN.OPTION_STRAIGHT\")}</option>\n                    <option value=\"option_rectangle\">${_(\"@PEN.OPTION_RECT\")}</option>\n                    <option value=\"option_circle\">${_(\"@PEN.OPTION_CIRCLE\")}</option>\n                </select>\n                <select id=\"axp_pen_select_fillMode\" class=\"axpc_MSG axpc_NONE\" data-msg=\"@PEN0008\">\n                    <option value=\"option_all\">${_(\"@PEN.OPTION_FILL_SAMPLE_ALL\")}</option>\n                    <option value=\"option_layer\">${_(\"@PEN.OPTION_FILL_SAMPLE_CURRENT\")}</option>\n                </select>\n            </div>\n\n        </div>\n        <!-- ペンツール右側 -->\n        <div id=\"axp_pen_div_rightSide\">\n            <div>\n                <button data-idx=\"0\" id=\"axp_pen_button_penBase\" class=\"axpc_FUNC\" data-function=\"func_switch_pen\"\n                    data-selected=\"true\" data-msg=\"@PEN0050\"></button>\n            </div>\n            <div>\n                <button data-idx=\"1\" id=\"axp_pen_button_eraserBase\" class=\"axpc_FUNC\" data-function=\"func_switch_eraser\"\n                    data-msg=\"@PEN0051\"></button>\n            </div>\n            <div>\n                <button data-idx=\"2\" id=\"axp_pen_button_fillBase\" class=\"axpc_FUNC\" data-function=\"func_switch_fill\"\n                    data-msg=\"@PEN0052\"></button>\n            </div>\n            <div>\n                <button data-idx=\"3\" id=\"axp_pen_button_handBase\" class=\"axpc_FUNC\" data-function=\"func_switch_hand\"\n                    data-msg=\"@PEN0053\"></button>\n            </div>\n            <div>\n                <button data-idx=\"4\" id=\"axp_pen_button_spuitBase\" class=\"axpc_FUNC\" data-function=\"func_switch_spuit\"\n                    data-msg=\"@PEN0054\"></button>\n            </div>\n        </div>\n    </div>\n</div>";
+module.exports = "<!-- ペンツール -->\n<div class=\"axpc_window_content\">\n    <div id=\"axp_pen_div_content\">\n        <!-- ペンツール左側 -->\n        <div id=\"axp_pen_div_leftSide\">\n            <span id=\"axp_pen_span_penName\" class=\"axpc_MSG\" data-msg=\"@PEN0001\"></span>\n            <!-- プレビュー領域 -->\n            <div id=\"axp_pen_div_preview\" class=\"axpc_MSG\" data-msg=\"@PEN0200\">\n                <canvas id=\"axp_pen_canvas_previewPenSize\"></canvas>\n                <canvas id=\"axp_pen_canvas_previewSpuit\"></canvas>\n            </div>\n            <!-- スライダー領域 -->\n            <div id=\"axp_pen_div_slider\">\n                <!-- ペンの不透明度 -->\n                <form id=\"axp_pen_form_alpha\" class=\"axpc_range axpc_text_border\"\n                    oninput=\"result.value=parseInt(volume.value)\">\n                    <input type=\"range\" id=\"axp_pen_range_alpha\" name=\"volume\" min=\"5\" max=\"100\" value=\"100\" step=\"5\"\n                        class=\"axpc_MSG\" data-msg=\"@PEN0002\">\n                    <div class=\"axpc_range_label\">${_(\"@COMMON.OPACITY\")}</div>\n                    <div class=\"axpc_range_value\"><output name=\"result\"></output></div>\n                </form>\n                <!-- ペンの太さ -->\n                <form id=\"axp_pen_form_penSize\" class=\"axpc_range axpc_text_border\">\n                    <input type=\"range\" id=\"axp_pen_range_penSize\" name=\"volume\" min=\"1\" max=\"100\" value=\"1\" step=\"1\"\n                        class=\"axpc_MSG\" data-msg=\"@PEN0003\">\n                    <div class=\"axpc_range_label\">${_(\"@PEN.SIZE\")}</div>\n                    <div class=\"axpc_range_value\"><output name=\"result\"></output></div>\n                </form>\n                <!-- バケツの境界補正 -->\n                <form id=\"axp_pen_form_fillThreshold\" oninput=\"result.value=parseInt(volume.value)\"\n                    class=\"axpc_range axpc_text_border\">\n                    <input type=\"range\" id=\"axp_pen_range_fillThreshold\" name=\"volume\" value=\"0\" step=\"1\" min=\"0\"\n                        max=\"5\" class=\"axpc_MSG\" data-msg=\"@PEN0004\">\n                    <div class=\"axpc_range_label\">${_(\"@PEN.GROW_FILL_AREA\")}</div>\n                    <div class=\"axpc_range_value\"><output name=\"result\"></output></div>\n                </form>\n                <!-- バケツのグラデーション角度 -->\n                <form id=\"axp_pen_form_fillGradationDeg\" oninput=\"result.value=parseInt(volume.value)\"\n                    class=\"axpc_range axpc_text_border\">\n                    <input type=\"range\" id=\"axp_pen_range_fillGradationDeg\" name=\"volume\" value=\"0\" step=\"15\" min=\"0\"\n                        max=\"360\" class=\"axpc_MSG\" data-msg=\"@PEN0005\">\n                    <div class=\"axpc_range_label\">${_(\"@PEN.ANGLE\")}</div>\n                    <div class=\"axpc_range_value\"><output name=\"result\"></output></div>\n                </form>\n                <!-- クレヨンの丸み -->\n                <form id=\"axp_pen_form_radius\" oninput=\"result.value=parseInt(volume.value)\"\n                    class=\"axpc_range axpc_text_border\">\n                    <input type=\"range\" id=\"axp_pen_range_radius\" name=\"volume\" value=\"50\" step=\"1\" min=\"0\" max=\"50\"\n                        class=\"axpc_MSG\" data-msg=\"@PEN0010\">\n                    <div class=\"axpc_range_label\">${_(\"@PEN.ROUNDNESS\")}</div>\n                    <div class=\"axpc_range_value\"><output name=\"result\"></output></div>\n                </form>\n                <!-- ぼかし度（オプション） -->\n                <form id=\"axp_pen_form_blur\" oninput=\"result.value=parseInt(volume.value)\"\n                    class=\"axpc_range axpc_text_border\">\n                    <input type=\"range\" id=\"axp_pen_range_blur\" name=\"volume\" value=\"0\" step=\"1\" min=\"0\" max=\"5\"\n                        class=\"axpc_MSG\" data-msg=\"@PEN0009\">\n                    <div class=\"axpc_range_label\">${_(\"@PEN.BLUR\")}</div>\n                    <div class=\"axpc_range_value\"><output name=\"result\"></output></div>\n                </form>\n                <!-- トーン濃度（オプション） -->\n                <form id=\"axp_pen_form_toneLevel\" oninput=\"result.value=parseInt(volume.value)\"\n                    class=\"axpc_range axpc_text_border\">\n                    <input type=\"range\" id=\"axp_pen_range_toneLevel\" name=\"volume\" value=\"16\" step=\"1\" min=\"1\" max=\"16\"\n                        class=\"axpc_MSG\" data-msg=\"@PEN0006\">\n                    <div class=\"axpc_range_label\">${_(\"@PEN.TONE_DENSITY\")}</div>\n                    <div class=\"axpc_range_value\"><output name=\"result\"></output></div>\n                </form>\n                <!-- 手ぶれ補正（オプション） -->\n                <form id=\"axp_pen_form_stabilizer\" oninput=\"result.value=parseInt(volume.value)\"\n                    class=\"axpc_range axpc_text_border\">\n                    <input type=\"range\" id=\"axp_pen_range_stabilizer\" name=\"volume\" value=\"2\" step=\"1\" min=\"0\" max=\"10\"\n                        class=\"axpc_MSG\" data-msg=\"@CFG0040\">\n                    <div class=\"axpc_range_label\">${_(\"@PEN.STABILIZER\")}</div>\n                    <div class=\"axpc_range_value\"><output name=\"result\"></output></div>\n                </form>\n                <!-- 筆圧 ON/OFF（オプション、ペン別） -->\n                <div id=\"axp_pen_form_usePressure\" class=\"axpc_checkbox axpc_text_border\">\n                    <label>\n                        <input type=\"checkbox\" id=\"axp_pen_checkbox_usePressure\" checked>${_(\"@PEN.USE_PRESSURE\")}\n                    </label>\n                </div>\n                <!-- [仮設] ハライ/ハネ チューニング -->\n                <form id=\"axp_pen_form_flickThreshold\" oninput=\"result.value=(volume.value/100)\" class=\"axpc_range axpc_text_border\">\n                    <input type=\"range\" name=\"volume\" min=\"0\" max=\"50\" value=\"10\" step=\"1\">\n                    <div class=\"axpc_range_label\">ハライ閾値</div>\n                    <div class=\"axpc_range_value\"><output name=\"result\">0.1</output></div>\n                </form>\n                <form id=\"axp_pen_form_flickFactor\" oninput=\"result.value=volume.value\" class=\"axpc_range axpc_text_border\">\n                    <input type=\"range\" name=\"volume\" min=\"0\" max=\"80\" value=\"40\" step=\"1\">\n                    <div class=\"axpc_range_label\">テーパ係数</div>\n                    <div class=\"axpc_range_value\"><output name=\"result\">40</output></div>\n                </form>\n                <form id=\"axp_pen_form_flickMinRatio\" oninput=\"result.value=(volume.value/10)\" class=\"axpc_range axpc_text_border\">\n                    <input type=\"range\" name=\"volume\" min=\"0\" max=\"100\" value=\"20\" step=\"5\">\n                    <div class=\"axpc_range_label\">最小倍率</div>\n                    <div class=\"axpc_range_value\"><output name=\"result\">2</output></div>\n                </form>\n                <form id=\"axp_pen_form_flickMaxRatio\" oninput=\"result.value=(volume.value/10)\" class=\"axpc_range axpc_text_border\">\n                    <input type=\"range\" name=\"volume\" min=\"0\" max=\"100\" value=\"70\" step=\"1\">\n                    <div class=\"axpc_range_label\">最大倍率</div>\n                    <div class=\"axpc_range_value\"><output name=\"result\">7</output></div>\n                </form>\n                <form id=\"axp_pen_form_flickExtrap\" oninput=\"result.value=volume.value\" class=\"axpc_range axpc_text_border\">\n                    <input type=\"range\" name=\"volume\" min=\"0\" max=\"80\" value=\"15\" step=\"5\">\n                    <div class=\"axpc_range_label\">外挿率%</div>\n                    <div class=\"axpc_range_value\"><output name=\"result\">15</output></div>\n                </form>\n            </div>\n\n            <div id=\"axp_pen_div_spuitColorRGBA\">\n                <div>${_(\"@COMMON.RED\")}:<span id=\"axp_pen_span_spuitColorRed\">-</span></div>\n                <div>${_(\"@COMMON.GREEN\")}:<span id=\"axp_pen_span_spuitColorGreen\">-</span></div>\n                <div>${_(\"@COMMON.BLUE\")}:<span id=\"axp_pen_span_spuitColorBlue\">-</span></div>\n                <div>${_(\"@COMMON.ALPHA\")}:<span id=\"axp_pen_span_spuitColorAlpha\">-</span></div>\n            </div>\n\n            <div id=\"axp_pen_div_selectbox\">\n                <select id=\"axp_pen_select_drawMode\" class=\"axpc_MSG\" data-msg=\"@PEN0007\">\n                    <option value=\"option_normal\">${_(\"@PEN.OPTION_FREE_HAND\")}</option>\n                    <option value=\"option_line\">${_(\"@PEN.OPTION_STRAIGHT\")}</option>\n                    <option value=\"option_rectangle\">${_(\"@PEN.OPTION_RECT\")}</option>\n                    <option value=\"option_circle\">${_(\"@PEN.OPTION_CIRCLE\")}</option>\n                </select>\n                <select id=\"axp_pen_select_fillMode\" class=\"axpc_MSG axpc_NONE\" data-msg=\"@PEN0008\">\n                    <option value=\"option_all\">${_(\"@PEN.OPTION_FILL_SAMPLE_ALL\")}</option>\n                    <option value=\"option_layer\">${_(\"@PEN.OPTION_FILL_SAMPLE_CURRENT\")}</option>\n                </select>\n            </div>\n\n        </div>\n        <!-- ペンツール右側 -->\n        <div id=\"axp_pen_div_rightSide\">\n            <div>\n                <button data-idx=\"0\" id=\"axp_pen_button_penBase\" class=\"axpc_FUNC\" data-function=\"func_switch_pen\"\n                    data-selected=\"true\" data-msg=\"@PEN0050\"></button>\n            </div>\n            <div>\n                <button data-idx=\"1\" id=\"axp_pen_button_eraserBase\" class=\"axpc_FUNC\" data-function=\"func_switch_eraser\"\n                    data-msg=\"@PEN0051\"></button>\n            </div>\n            <div>\n                <button data-idx=\"2\" id=\"axp_pen_button_fillBase\" class=\"axpc_FUNC\" data-function=\"func_switch_fill\"\n                    data-msg=\"@PEN0052\"></button>\n            </div>\n            <div>\n                <button data-idx=\"3\" id=\"axp_pen_button_handBase\" class=\"axpc_FUNC\" data-function=\"func_switch_hand\"\n                    data-msg=\"@PEN0053\"></button>\n            </div>\n            <div>\n                <button data-idx=\"4\" id=\"axp_pen_button_spuitBase\" class=\"axpc_FUNC\" data-function=\"func_switch_spuit\"\n                    data-msg=\"@PEN0054\"></button>\n            </div>\n        </div>\n    </div>\n</div>";
 
 /***/ }),
 
@@ -20981,7 +21146,7 @@ __webpack_require__.r(__webpack_exports__);
     axpObj;
     constructor(option) {
         console.log('version:', "3.0.0-alpha");
-        console.log('build:', "2026-06-17T01:11:40.099Z");
+        console.log('build:', "2026-06-19T13:20:11.089Z");
         (async () => {
             // 追加辞書オプションチェック
             let additionalDictionaryJSON = null;
@@ -21362,7 +21527,7 @@ __webpack_require__.r(__webpack_exports__);
     }
     // バージョン
     version() {
-        return `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-06-17T01:11:40.099Z"})`;
+        return `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-06-19T13:20:11.089Z"})`;
     }
     // 画面の表示／非表示
     on() {
@@ -21374,7 +21539,7 @@ __webpack_require__.r(__webpack_exports__);
         this.axpObj.isClose = true;
     }
     static ver() {
-        return `version ${"3.0.0-alpha"} (${"2026-06-17T01:11:40.099Z"})`;
+        return `version ${"3.0.0-alpha"} (${"2026-06-19T13:20:11.089Z"})`;
     }
 });
 

@@ -80,6 +80,32 @@
                         <input type="checkbox" id="axp_pen_checkbox_usePressure" checked>${_("@PEN.USE_PRESSURE")}
                     </label>
                 </div>
+                <!-- [仮設] ハライ/ハネ チューニング -->
+                <form id="axp_pen_form_flickThreshold" oninput="result.value=(volume.value/100)" class="axpc_range axpc_text_border">
+                    <input type="range" name="volume" min="0" max="50" value="10" step="1">
+                    <div class="axpc_range_label">ハライ閾値</div>
+                    <div class="axpc_range_value"><output name="result">0.1</output></div>
+                </form>
+                <form id="axp_pen_form_flickFactor" oninput="result.value=volume.value" class="axpc_range axpc_text_border">
+                    <input type="range" name="volume" min="0" max="80" value="40" step="1">
+                    <div class="axpc_range_label">テーパ係数</div>
+                    <div class="axpc_range_value"><output name="result">40</output></div>
+                </form>
+                <form id="axp_pen_form_flickMinRatio" oninput="result.value=(volume.value/10)" class="axpc_range axpc_text_border">
+                    <input type="range" name="volume" min="0" max="100" value="20" step="5">
+                    <div class="axpc_range_label">最小倍率</div>
+                    <div class="axpc_range_value"><output name="result">2</output></div>
+                </form>
+                <form id="axp_pen_form_flickMaxRatio" oninput="result.value=(volume.value/10)" class="axpc_range axpc_text_border">
+                    <input type="range" name="volume" min="0" max="100" value="70" step="1">
+                    <div class="axpc_range_label">最大倍率</div>
+                    <div class="axpc_range_value"><output name="result">7</output></div>
+                </form>
+                <form id="axp_pen_form_flickExtrap" oninput="result.value=volume.value" class="axpc_range axpc_text_border">
+                    <input type="range" name="volume" min="0" max="80" value="15" step="5">
+                    <div class="axpc_range_label">外挿率%</div>
+                    <div class="axpc_range_value"><output name="result">15</output></div>
+                </form>
             </div>
 
             <div id="axp_pen_div_spuitColorRGBA">

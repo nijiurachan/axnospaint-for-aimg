@@ -13,21 +13,36 @@ export class StampPenBase extends DrawingPenBase {
     constructor(option) {
         super(option);
         // ピクセル単位の調節パラメータ (ペンごとに override 可)
-        this.endTaperPx = 2;   // 終端テーパ長 (意図しない強点の抑制)
         this.startRawPx = 2;   // 開幕この距離まで筆圧フィルタを素通し
         this.subPxFloor = 0.5; // サブピクセル幅の形状下限
+        // 終端ハライ/ハネ (速度依存・筆圧テーパー)。筆圧ペンのみ有効。具体ペンで上書き可。
+        this.flickTaper = {
+            enabled: true,
+            thresholdBase: 0.1,   // ハライ判定速度 [canvas px/ms] (Z^-0.5 補正前)
+            taperFactor: 40,      // テーパ長[px] = v[px/ms] × factor[ms] (実質ルックアヘッドms)
+            minTaperRatio: 2.0,   // 下限 = ブラシ幅 × この倍率
+            maxTaperRatio: 7.0,   // 上限 = (ブラシ幅 + 4px) × この倍率 (細ペンでもハライ出るよう+4)
+            extrapRatio: 0.15,    // テーパ距離のうち外挿(進行方向への延長)が占める比率 (0〜0.8)
+        };
     }
 
     // 描画開始
     start(x, y, e, option) {
         if (!this._startCommon(x, y, option)) return;
 
+        // ハライは筆圧ペン入力時のみ。マウス/タッチは筆圧一定のため誤発火させない。
+        const isPenInput = !!(e && e.pointerType === 'pen');
         this.pipeline = new StrokePipeline();
         this.pipeline.configure({
             ...readStrokeSettings(),
             usePressure: this.usePressure,
             startPx: this.startRawPx,
-            endTaperPx: this.endTaperPx,
+            flickTaper: this.flickTaper,
+            zoom: this.axpObj.scale / 100,
+            brushWidth: this.size,
+            // 非筆圧ペンは半径が筆圧非依存のため、延長すると等幅で伸びてしまう → usePressure と pen で gate
+            // (flickTaper は具体ペンで null 上書き可のため null ガードする)
+            enableFlickTaper: this.usePressure && !!this.flickTaper && this.flickTaper.enabled && isPenInput,
         });
         this.lastCommitted = null;
 
@@ -71,6 +86,18 @@ export class StampPenBase extends DrawingPenBase {
                 for (const cp of commits) {
                     this._drawSegment(this.lastCommitted, cp);
                     this.lastCommitted = cp;
+                }
+                // 終端ハライ/ハネ・テーパー: 既存終端の筆圧を遡って下げる必要があるため、
+                // ブラシキャンバスを clear し、テーパー後の全確定点を再描画する (write が
+                // レイヤー再ロード後にブラシ全体を1回合成するため二重濃化は起きない)。
+                const rebuild = this.pipeline.consumeRebuild();
+                if (rebuild && rebuild.length > 0) {
+                    this.CANVAS.brush_ctx.clearRect(0, 0, this.axpObj.x_size, this.axpObj.y_size);
+                    this.lastCommitted = null;
+                    for (const cp of rebuild) {
+                        this._drawSegment(this.lastCommitted, cp);
+                        this.lastCommitted = cp;
+                    }
                 }
                 this.write();
             } else {

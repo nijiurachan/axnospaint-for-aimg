@@ -1,5 +1,5 @@
 /*!
- * AXNOS Paint w/ nijiurachan custom version 3.0.0-alpha (2026-06-19T10:12:40.151Z)
+ * AXNOS Paint w/ nijiurachan custom version 3.0.0-alpha (2026-06-19T13:20:11.089Z)
  * (c) 2026- nijiurachan contributors
  * (c) 2022「悪の巣」部屋番号13番：「趣味の悪い大衆酒場[Mad end dance hall]」
  * Licensed under MPL 2.0
@@ -7903,7 +7903,7 @@ class ConfigSystem {
         let targetElement = document.getElementById('axp_config');
         targetElement.insertAdjacentHTML('afterbegin', this.axpObj.translateHTML(_html_config_txt__WEBPACK_IMPORTED_MODULE_2__));
         // バージョン情報の表示
-        document.getElementById('axp_config_div_versionInfo').textContent = `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-06-19T10:12:40.151Z"})`
+        document.getElementById('axp_config_div_versionInfo').textContent = `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-06-19T13:20:11.089Z"})`
     }
     // HTML展開
     deployHTML() {
@@ -11143,7 +11143,8 @@ class StampPenBase extends _drawingpen_js__WEBPACK_IMPORTED_MODULE_0__.DrawingPe
             zoom: this.axpObj.scale / 100,
             brushWidth: this.size,
             // 非筆圧ペンは半径が筆圧非依存のため、延長すると等幅で伸びてしまう → usePressure と pen で gate
-            enableFlickTaper: this.usePressure && this.flickTaper.enabled && isPenInput,
+            // (flickTaper は具体ペンで null 上書き可のため null ガードする)
+            enableFlickTaper: this.usePressure && !!this.flickTaper && this.flickTaper.enabled && isPenInput,
         });
         this.lastCommitted = null;
 
@@ -14810,6 +14811,9 @@ class OneEuroStabilizer {
 
         // バックトラック: 終点から遡り、内挿テーパ開始点を決める。
         // 終了条件: 「局所速度 < v/2 を2点連続」 または 「遡及距離が interpDist 到達」。
+        // ※ 区間を必ず先に加算してから距離判定する。先に判定して除外すると、初回区間が
+        //    interpDist を超えるケースで acc=0 となり、0%外挿時に span=0→null でテーパーが
+        //    無効化されてしまう (最低1区間は内挿に含める。超過は最大1区間ぶんで無害)。
         const n = pts.length;
         let startIdx = n - 1;
         let acc = 0; // 実内挿テーパ距離
@@ -14821,10 +14825,10 @@ class OneEuroStabilizer {
             const segDt = Math.max(1, b.t - a.t);
             const vi = segDist / segDt;
             if (vi < v * 0.5) lowCount++; else lowCount = 0;
-            if (acc + segDist > interpDist) { startIdx = i; break; }
             acc += segDist;
             startIdx = i - 1;
-            if (lowCount >= 2) break;
+            if (acc >= interpDist) break;   // 距離上限 (現区間を含めて到達)
+            if (lowCount >= 2) break;        // 速度低下が2点連続
         }
         const actualInterpDist = acc;
         const span = actualInterpDist + extrapDist;
@@ -21142,7 +21146,7 @@ __webpack_require__.r(__webpack_exports__);
     axpObj;
     constructor(option) {
         console.log('version:', "3.0.0-alpha");
-        console.log('build:', "2026-06-19T10:12:40.151Z");
+        console.log('build:', "2026-06-19T13:20:11.089Z");
         (async () => {
             // 追加辞書オプションチェック
             let additionalDictionaryJSON = null;
@@ -21523,7 +21527,7 @@ __webpack_require__.r(__webpack_exports__);
     }
     // バージョン
     version() {
-        return `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-06-19T10:12:40.151Z"})`;
+        return `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-06-19T13:20:11.089Z"})`;
     }
     // 画面の表示／非表示
     on() {
@@ -21535,7 +21539,7 @@ __webpack_require__.r(__webpack_exports__);
         this.axpObj.isClose = true;
     }
     static ver() {
-        return `version ${"3.0.0-alpha"} (${"2026-06-19T10:12:40.151Z"})`;
+        return `version ${"3.0.0-alpha"} (${"2026-06-19T13:20:11.089Z"})`;
     }
 });
 

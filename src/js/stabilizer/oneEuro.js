@@ -262,6 +262,9 @@ export class OneEuroStabilizer {
 
         // バックトラック: 終点から遡り、内挿テーパ開始点を決める。
         // 終了条件: 「局所速度 < v/2 を2点連続」 または 「遡及距離が interpDist 到達」。
+        // ※ 区間を必ず先に加算してから距離判定する。先に判定して除外すると、初回区間が
+        //    interpDist を超えるケースで acc=0 となり、0%外挿時に span=0→null でテーパーが
+        //    無効化されてしまう (最低1区間は内挿に含める。超過は最大1区間ぶんで無害)。
         const n = pts.length;
         let startIdx = n - 1;
         let acc = 0; // 実内挿テーパ距離
@@ -273,10 +276,10 @@ export class OneEuroStabilizer {
             const segDt = Math.max(1, b.t - a.t);
             const vi = segDist / segDt;
             if (vi < v * 0.5) lowCount++; else lowCount = 0;
-            if (acc + segDist > interpDist) { startIdx = i; break; }
             acc += segDist;
             startIdx = i - 1;
-            if (lowCount >= 2) break;
+            if (acc >= interpDist) break;   // 距離上限 (現区間を含めて到達)
+            if (lowCount >= 2) break;        // 速度低下が2点連続
         }
         const actualInterpDist = acc;
         const span = actualInterpDist + extrapDist;

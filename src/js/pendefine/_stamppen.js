@@ -41,7 +41,8 @@ export class StampPenBase extends DrawingPenBase {
             zoom: this.axpObj.scale / 100,
             brushWidth: this.size,
             // 非筆圧ペンは半径が筆圧非依存のため、延長すると等幅で伸びてしまう → usePressure と pen で gate
-            enableFlickTaper: this.usePressure && this.flickTaper.enabled && isPenInput,
+            // (flickTaper は具体ペンで null 上書き可のため null ガードする)
+            enableFlickTaper: this.usePressure && !!this.flickTaper && this.flickTaper.enabled && isPenInput,
         });
         this.lastCommitted = null;
 

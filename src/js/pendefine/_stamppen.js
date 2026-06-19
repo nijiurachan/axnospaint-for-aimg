@@ -19,10 +19,10 @@ export class StampPenBase extends DrawingPenBase {
         this.flickTaper = {
             enabled: true,
             thresholdBase: 0.1,   // ハライ判定速度 [canvas px/ms] (Z^-0.5 補正前)
-            taperFactor: 35,      // テーパ長[px] = v[px/ms] × factor[ms] (実質ルックアヘッドms)
-            minTaperRatio: 0.5,   // 下限 = ブラシ幅 × この倍率
-            maxTaperRatio: 4.0,   // 上限 = (ブラシ幅 + 4px) × この倍率 (細ペンでもハライ出るよう+4)
-            extrapRatio: 0.3,     // テーパ距離のうち外挿(進行方向への延長)が占める比率 (0〜0.8)
+            taperFactor: 40,      // テーパ長[px] = v[px/ms] × factor[ms] (実質ルックアヘッドms)
+            minTaperRatio: 2.0,   // 下限 = ブラシ幅 × この倍率
+            maxTaperRatio: 7.0,   // 上限 = (ブラシ幅 + 4px) × この倍率 (細ペンでもハライ出るよう+4)
+            extrapRatio: 0.15,    // テーパ距離のうち外挿(進行方向への延長)が占める比率 (0〜0.8)
         };
     }
 

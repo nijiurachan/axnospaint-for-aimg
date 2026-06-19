@@ -87,24 +87,24 @@
                     <div class="axpc_range_value"><output name="result">0.1</output></div>
                 </form>
                 <form id="axp_pen_form_flickFactor" oninput="result.value=volume.value" class="axpc_range axpc_text_border">
-                    <input type="range" name="volume" min="0" max="80" value="35" step="1">
+                    <input type="range" name="volume" min="0" max="80" value="40" step="1">
                     <div class="axpc_range_label">テーパ係数</div>
-                    <div class="axpc_range_value"><output name="result">35</output></div>
+                    <div class="axpc_range_value"><output name="result">40</output></div>
                 </form>
                 <form id="axp_pen_form_flickMinRatio" oninput="result.value=(volume.value/10)" class="axpc_range axpc_text_border">
-                    <input type="range" name="volume" min="0" max="100" value="5" step="5">
+                    <input type="range" name="volume" min="0" max="100" value="20" step="5">
                     <div class="axpc_range_label">最小倍率</div>
-                    <div class="axpc_range_value"><output name="result">0.5</output></div>
+                    <div class="axpc_range_value"><output name="result">2</output></div>
                 </form>
                 <form id="axp_pen_form_flickMaxRatio" oninput="result.value=(volume.value/10)" class="axpc_range axpc_text_border">
-                    <input type="range" name="volume" min="0" max="100" value="40" step="1">
+                    <input type="range" name="volume" min="0" max="100" value="70" step="1">
                     <div class="axpc_range_label">最大倍率</div>
-                    <div class="axpc_range_value"><output name="result">4</output></div>
+                    <div class="axpc_range_value"><output name="result">7</output></div>
                 </form>
                 <form id="axp_pen_form_flickExtrap" oninput="result.value=volume.value" class="axpc_range axpc_text_border">
-                    <input type="range" name="volume" min="0" max="80" value="30" step="5">
+                    <input type="range" name="volume" min="0" max="80" value="15" step="5">
                     <div class="axpc_range_label">外挿率%</div>
-                    <div class="axpc_range_value"><output name="result">30</output></div>
+                    <div class="axpc_range_value"><output name="result">15</output></div>
                 </form>
             </div>
 

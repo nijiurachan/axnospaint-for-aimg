@@ -33,6 +33,7 @@
     "@PEN.STABILIZER": "手ぶれ補正",
     "@PEN.USE_PRESSURE": "筆圧を反映",
     "@PEN.USE_SUBPX_ALPHA": "極細時に半透明化",
+    "@PEN.ERASE_RATE": "消し率",
     "@PEN.OPTION_FREE_HAND": "手描き",
     "@PEN.OPTION_STRAIGHT": "直線",
     "@PEN.OPTION_RECT": "長方形",

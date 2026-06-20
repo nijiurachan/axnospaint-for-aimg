@@ -28,6 +28,7 @@ export class DrawingPenBase extends PenObj {
         this.canUndo = true;
         this.usePressure = false;        // 既定: 筆圧なし (Round のみ true)
         this.usePressureControl = false; // 既定: 筆圧チェック非表示 (Round のみ true)
+        this.useSubPxAlphaControl = false;
         // 描画
         this.borderRadius = 50;
         this.borderStyle = 'normal';

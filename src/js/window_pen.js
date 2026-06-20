@@ -309,6 +309,19 @@ export class PenSystem extends ToolWindow {
             }
         );
 
+        // レンジスライダー：消し率（消しゴム専用）
+        document.getElementById('axp_pen_range_eraseRate').addEventListener('input',
+            (e) => {
+                const ERASE_RATES = [2, 5, 10, 20, 50, 100];
+                const idx = Number(e.target.value);
+                const rate = ERASE_RATES[idx];
+                this.setAlpha(rate);
+                this.axpObj.msg('@AXP5001', this.getName(), rate);
+                this.previewPenSize();
+                this.axpObj.configSystem.saveConfig('P-ALP_' + this.pen_mode, rate);
+            }
+        );
+
         // レンジスライダー：塗り残し補正
         document.getElementById('axp_pen_range_fillThreshold').addEventListener('input',
             (e) => {
@@ -387,7 +400,7 @@ export class PenSystem extends ToolWindow {
                 if (pen) pen.usePressure = checked;
                 this.axpObj.configSystem.saveConfig('P-USP_' + this.pen_mode, checked);
                 // 極細半透明チェックの連動表示
-                if (pen && pen.usePressureControl) {
+                if (pen && pen.useSubPxAlphaControl) {
                     if (checked) {
                         UTIL.show('axp_pen_form_useSubPxAlpha');
                     } else {
@@ -840,11 +853,27 @@ export class PenSystem extends ToolWindow {
             'axp_pen_form_penSize',
             this.getSize(),
         )
-        // 不透明度
-        displaySlider(
-            'axp_pen_form_alpha',
-            this.getAlpha(),
-        )
+        // 不透明度 (消しゴムは消し率で代替するため非表示)
+        {
+            const isEraser = this.penObj[this.pen_mode].type === 'eraser';
+            displaySlider(
+                'axp_pen_form_alpha',
+                isEraser ? null : this.getAlpha(),
+            )
+        }
+        // 消し率 (消しゴム専用)
+        {
+            const pen = this.penObj[this.pen_mode];
+            if (pen && pen.type === 'eraser') {
+                const ERASE_RATES = [2, 5, 10, 20, 50, 100];
+                const idx = ERASE_RATES.indexOf(pen.alpha);
+                UTIL.show('axp_pen_form_eraseRate');
+                document.getElementById('axp_pen_form_eraseRate').volume.value = (idx >= 0) ? idx : 5;
+                document.getElementById('axp_pen_form_eraseRate').result.value = pen.alpha;
+            } else {
+                UTIL.hide('axp_pen_form_eraseRate');
+            }
+        }
         // バケツ閾値
         displaySlider(
             'axp_pen_form_fillThreshold',
@@ -891,7 +920,7 @@ export class PenSystem extends ToolWindow {
         // 極細時に半透明化 (ペン別、usePressureControl かつ usePressure のペンのみ表示)
         {
             const pen = this.penObj[this.pen_mode];
-            if (pen && pen.usePressureControl && pen.usePressure) {
+            if (pen && pen.useSubPxAlphaControl && pen.usePressure) {
                 UTIL.show('axp_pen_form_useSubPxAlpha');
                 document.getElementById('axp_pen_checkbox_useSubPxAlpha').checked = !!pen.useSubPxAlpha;
             } else {

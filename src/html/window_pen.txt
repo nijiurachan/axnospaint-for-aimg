@@ -19,6 +19,13 @@
                     <div class="axpc_range_label">${_("@COMMON.OPACITY")}</div>
                     <div class="axpc_range_value"><output name="result"></output></div>
                 </form>
+                <!-- 消し率（消しゴム専用） -->
+                <form id="axp_pen_form_eraseRate" oninput="result.value=[2,5,10,20,50,100][parseInt(volume.value)]"
+                    class="axpc_range axpc_text_border">
+                    <input type="range" id="axp_pen_range_eraseRate" name="volume" min="0" max="5" value="5" step="1">
+                    <div class="axpc_range_label">${_("@PEN.ERASE_RATE")}</div>
+                    <div class="axpc_range_value"><output name="result">100</output></div>
+                </form>
                 <!-- ペンの太さ -->
                 <form id="axp_pen_form_penSize" class="axpc_range axpc_text_border">
                     <input type="range" id="axp_pen_range_penSize" name="volume" min="1" max="100" value="1" step="1"

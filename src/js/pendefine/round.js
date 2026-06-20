@@ -15,8 +15,9 @@ export class Round extends StampPenBase {
         this.size = 1;
         this.index = range_index(this.size);
         // 制御
-        this.usePressure = true;         // 唯一の筆圧反応ペン
-        this.usePressureControl = true;  // 筆圧 ON/OFF をユーザーが切替可能
+        this.usePressure = true;
+        this.usePressureControl = true;
+        this.useSubPxAlphaControl = true;
 
         this.init_save();
     }

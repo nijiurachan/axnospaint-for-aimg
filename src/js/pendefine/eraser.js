@@ -1,7 +1,7 @@
 // @description ペン定義：スタンプ系共通＞消しゴム
 //
 // 丸ニブの消しゴム。形状は StampPenBase 既定の円スタンプをそのまま使い、
-// 合成のみ destination-out にする。筆圧は使わない。
+// 合成のみ destination-out にする。筆圧対応（丸ペン同様の可変幅消去）。
 
 import { StampPenBase } from './_stamppen.js';
 
@@ -16,8 +16,10 @@ export class Eraser extends StampPenBase {
         this.toneLevel = null;
         this.blurLevel = null;
         // 制御
-        this.usePressure = false;        // 消しゴムは筆圧で太さを変えない
-        this.usePressureControl = false; // 消しゴムにはペン別の筆圧チェックを表示しない
+        this.usePressure = true;
+        this.usePressureControl = true;
+        this.useSubPxAlpha = false;
+        this.flickTaper = null;
         // 描画
         this.borderStyle = 'dashed';
 

@@ -683,6 +683,7 @@ export class PenSystem extends ToolWindow {
                 item.dataset.selected = 'false';
             }
         }
+        let actualMode = mode;
         // アイコン変更
         switch (mode) {
             case 'axp_penmode_spuit':
@@ -711,8 +712,13 @@ export class PenSystem extends ToolWindow {
                 elementHand.dataset.msg = document.getElementById(mode).dataset.msg;
                 break;
             }
+            case 'axp_penmode_eraser': {
+                actualMode = document.getElementById('axp_pen_button_eraserBase').dataset.set;
+                document.getElementById('axp_pen_button_eraserBase').dataset.selected = 'true';
+                break;
+            }
         }
-        this.changePenMode(mode);
+        this.changePenMode(actualMode);
     }
     restorePenModeTemporary(mode) {
         console.log('restorePenModeTemporary:', mode);
@@ -742,6 +748,9 @@ export class PenSystem extends ToolWindow {
                 elementHand.classList.add(this.getClassIcon(this.saveIcon));
                 break;
             }
+            case 'axp_penmode_eraser':
+                document.getElementById('axp_pen_button_eraserBase').dataset.selected = 'false';
+                break;
         }
         // 復元
         this.saveElement.dataset.selected = 'true';

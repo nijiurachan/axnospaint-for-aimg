@@ -1,5 +1,5 @@
 /*!
- * AXNOS Paint w/ nijiurachan custom version 3.0.0-alpha (2026-06-20T12:03:56.892Z)
+ * AXNOS Paint w/ nijiurachan custom version 3.0.0-alpha (2026-06-20T12:39:01.137Z)
  * (c) 2026- nijiurachan contributors
  * (c) 2022「悪の巣」部屋番号13番：「趣味の悪い大衆酒場[Mad end dance hall]」
  * Licensed under MPL 2.0
@@ -7940,7 +7940,7 @@ class ConfigSystem {
         let targetElement = document.getElementById('axp_config');
         targetElement.insertAdjacentHTML('afterbegin', this.axpObj.translateHTML(_html_config_txt__WEBPACK_IMPORTED_MODULE_2__));
         // バージョン情報の表示
-        document.getElementById('axp_config_div_versionInfo').textContent = `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-06-20T12:03:56.892Z"})`
+        document.getElementById('axp_config_div_versionInfo').textContent = `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-06-20T12:39:01.137Z"})`
     }
     // HTML展開
     deployHTML() {
@@ -19542,6 +19542,7 @@ class PenSystem extends _window_js__WEBPACK_IMPORTED_MODULE_0__.ToolWindow {
                 item.dataset.selected = 'false';
             }
         }
+        let actualMode = mode;
         // アイコン変更
         switch (mode) {
             case 'axp_penmode_spuit':
@@ -19570,8 +19571,13 @@ class PenSystem extends _window_js__WEBPACK_IMPORTED_MODULE_0__.ToolWindow {
                 elementHand.dataset.msg = document.getElementById(mode).dataset.msg;
                 break;
             }
+            case 'axp_penmode_eraser': {
+                actualMode = document.getElementById('axp_pen_button_eraserBase').dataset.set;
+                document.getElementById('axp_pen_button_eraserBase').dataset.selected = 'true';
+                break;
+            }
         }
-        this.changePenMode(mode);
+        this.changePenMode(actualMode);
     }
     restorePenModeTemporary(mode) {
         console.log('restorePenModeTemporary:', mode);
@@ -19601,6 +19607,9 @@ class PenSystem extends _window_js__WEBPACK_IMPORTED_MODULE_0__.ToolWindow {
                 elementHand.classList.add(this.getClassIcon(this.saveIcon));
                 break;
             }
+            case 'axp_penmode_eraser':
+                document.getElementById('axp_pen_button_eraserBase').dataset.selected = 'false';
+                break;
         }
         // 復元
         this.saveElement.dataset.selected = 'true';
@@ -21216,7 +21225,7 @@ __webpack_require__.r(__webpack_exports__);
     axpObj;
     constructor(option) {
         console.log('version:', "3.0.0-alpha");
-        console.log('build:', "2026-06-20T12:03:56.892Z");
+        console.log('build:', "2026-06-20T12:39:01.137Z");
         (async () => {
             // 追加辞書オプションチェック
             let additionalDictionaryJSON = null;
@@ -21597,7 +21606,7 @@ __webpack_require__.r(__webpack_exports__);
     }
     // バージョン
     version() {
-        return `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-06-20T12:03:56.892Z"})`;
+        return `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-06-20T12:39:01.137Z"})`;
     }
     // 画面の表示／非表示
     on() {
@@ -21609,7 +21618,7 @@ __webpack_require__.r(__webpack_exports__);
         this.axpObj.isClose = true;
     }
     static ver() {
-        return `version ${"3.0.0-alpha"} (${"2026-06-20T12:03:56.892Z"})`;
+        return `version ${"3.0.0-alpha"} (${"2026-06-20T12:39:01.137Z"})`;
     }
 });
 

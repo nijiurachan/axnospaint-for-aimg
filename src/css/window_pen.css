@@ -245,6 +245,8 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    -webkit-user-select: none;
+    user-select: none;
 }
 .axpc_pen_quicksize:active {
     background: #333;

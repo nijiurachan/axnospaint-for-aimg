@@ -53,7 +53,7 @@ export class KeyboardSystem {
         };
 
         window.addEventListener('blur', () => {
-            for (const [key, action] of Object.entries(this.activeModifiers)) {
+            for (const [, action] of Object.entries(this.activeModifiers)) {
                 applyAction(action, false);
             }
             this.activeModifiers = {};
@@ -70,8 +70,10 @@ export class KeyboardSystem {
             if (!e.key) return;
             const inkey = e.key.toUpperCase();
             if (this.activeModifiers[inkey]) {
-                applyAction(this.activeModifiers[inkey], false);
+                const releasedAction = this.activeModifiers[inkey];
                 delete this.activeModifiers[inkey];
+                const stillHeld = Object.values(this.activeModifiers).includes(releasedAction);
+                if (!stillHeld) applyAction(releasedAction, false);
             }
             switch (inkey) {
                 case ' ': this.axpObj.isSPACE = false; break;
@@ -86,7 +88,8 @@ export class KeyboardSystem {
 
         window.addEventListener('keydown', (e) => {
             if (this.axpObj.isClose || !this.axpObj.isCanvasOpen || this.axpObj.isModalOpen) return;
-            if (document.activeElement.type === 'number' || document.activeElement.type === 'text') return;
+            const tag = document.activeElement.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
             e.preventDefault();
 
             const inkey = e.key.toUpperCase();

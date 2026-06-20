@@ -139,31 +139,31 @@
                     <div style="margin-top: 8px;"></div>
                     <u>ハライ/ハネ</u>
                     <form id="axp_config_form_flickThreshold" oninput="result.value=(volume.value/100)"
-                        class="axpc_range axpc_range_width228">
+                        class="axpc_range axpc_range_width228 axpc_SAVE">
                         <input type="range" name="volume" min="0" max="50" value="10" step="1">
                         <div class="axpc_range_label axpc_text_border">ハライ閾値</div>
                         <div class="axpc_range_value axpc_text_border"><output name="result">0.1</output></div>
                     </form>
                     <form id="axp_config_form_flickFactor" oninput="result.value=volume.value"
-                        class="axpc_range axpc_range_width228">
+                        class="axpc_range axpc_range_width228 axpc_SAVE">
                         <input type="range" name="volume" min="0" max="80" value="40" step="1">
                         <div class="axpc_range_label axpc_text_border">テーパ係数</div>
                         <div class="axpc_range_value axpc_text_border"><output name="result">40</output></div>
                     </form>
                     <form id="axp_config_form_flickMinRatio" oninput="result.value=(volume.value/10)"
-                        class="axpc_range axpc_range_width228">
+                        class="axpc_range axpc_range_width228 axpc_SAVE">
                         <input type="range" name="volume" min="0" max="100" value="20" step="5">
                         <div class="axpc_range_label axpc_text_border">最小倍率</div>
                         <div class="axpc_range_value axpc_text_border"><output name="result">2</output></div>
                     </form>
                     <form id="axp_config_form_flickMaxRatio" oninput="result.value=(volume.value/10)"
-                        class="axpc_range axpc_range_width228">
+                        class="axpc_range axpc_range_width228 axpc_SAVE">
                         <input type="range" name="volume" min="0" max="100" value="70" step="1">
                         <div class="axpc_range_label axpc_text_border">最大倍率</div>
                         <div class="axpc_range_value axpc_text_border"><output name="result">7</output></div>
                     </form>
                     <form id="axp_config_form_flickExtrap" oninput="result.value=volume.value"
-                        class="axpc_range axpc_range_width228">
+                        class="axpc_range axpc_range_width228 axpc_SAVE">
                         <input type="range" name="volume" min="0" max="80" value="15" step="5">
                         <div class="axpc_range_label axpc_text_border">外挿率%</div>
                         <div class="axpc_range_value axpc_text_border"><output name="result">15</output></div>

@@ -1731,6 +1731,7 @@ export class ConfigSystem {
                 case 'P-DEG':
                 case 'P-RAD':
                 case 'P-USP':
+                case 'P-SPA':
                     // 初期化する設定の場合、復元を行わない
                     if (this.axpObj.config('axp_config_form_saveLastPenValue') === 'off') {
                         // スキップしたことを記憶
@@ -1799,6 +1800,15 @@ export class ConfigSystem {
                 console.log('無効なconfig:', key, value);
             }
         })
+        // ハライスライダーの復元値をペンオブジェクトに反映
+        for (const id of [
+            'axp_config_form_flickThreshold', 'axp_config_form_flickFactor',
+            'axp_config_form_flickMinRatio', 'axp_config_form_flickMaxRatio',
+            'axp_config_form_flickExtrap',
+        ]) {
+            const form = document.getElementById(id);
+            if (form && form.volume) form.volume.dispatchEvent(new Event('input'));
+        }
     }
     /**
      * 設定のカラーパレット表示用HTMLを、カラーパレット配列を基に生成する

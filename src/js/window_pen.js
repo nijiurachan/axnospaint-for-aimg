@@ -432,7 +432,7 @@ export class PenSystem extends ToolWindow {
             renderQuickBtn(btn);
 
             let lastTapTime = 0;
-            btn.addEventListener('pointerup', (e) => {
+            btn.addEventListener('pointerup', () => {
                 const now = Date.now();
                 if (now - lastTapTime < 300) {
                     const input = prompt('太さを入力 (1〜200)', btn.dataset.size);

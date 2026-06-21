@@ -33,6 +33,8 @@ export class Move extends PenObj {
 
         // 描画開始時のイメージ記憶
         this.axpObj.layerSystem.save();
+        this.axpObj.layerSystem.isStrokeActive = true;
+        this.axpObj.layerSystem.activateFastPath();
     }
     // 描画中
     move(x, y) {
@@ -63,7 +65,11 @@ export class Move extends PenObj {
         this.axpObj.layerSystem.write(
             this.CANVAS.draw_ctx.getImageData(0, 0, this.axpObj.x_size, this.axpObj.y_size)
         );
-        this.axpObj.layerSystem.updateCanvas();
+        if (this.axpObj.layerSystem.compositeFastPathActive) {
+            this.axpObj.layerSystem.drawFast();
+        } else {
+            this.axpObj.layerSystem.updateCanvas();
+        }
     }
     // 描画終了
     end(x, y) {

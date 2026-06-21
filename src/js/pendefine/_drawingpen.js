@@ -84,6 +84,8 @@ export class DrawingPenBase extends PenObj {
         this.input_position.push({ x, y });
         // 描画開始時のイメージ記憶
         this.axpObj.layerSystem.save();
+        this.axpObj.layerSystem.isStrokeActive = true;
+        this.axpObj.layerSystem.activateFastPath();
         this.init_brush(option);
         this.start_draw(x, y);
         return true;

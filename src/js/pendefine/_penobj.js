@@ -237,11 +237,19 @@ export class PenObj {
         this.axpObj.layerSystem.write(
             this.CANVAS.draw_ctx.getImageData(0, 0, this.axpObj.x_size, this.axpObj.y_size)
         );
-        // 描画中はカレントレイヤーのみ変動するため、サムネ更新もそのレイヤーのみ
-        this.axpObj.layerSystem.updateCanvas(this.axpObj.layerSystem.getId());
+        if (this.axpObj.layerSystem.compositeFastPathActive) {
+            this.axpObj.layerSystem.drawFast();
+        } else {
+            this.axpObj.layerSystem.updateCanvas(this.axpObj.layerSystem.getId());
+        }
     }
     // 描画終了 - 共通処理
     end_common() {
+        if (this.axpObj.layerSystem.isStrokeActive) {
+            this.axpObj.layerSystem.isStrokeActive = false;
+            this.axpObj.layerSystem.deactivateFastPath();
+            this.axpObj.layerSystem.updateCanvas();
+        }
         if (this.axpObj.isDrawing) {
             // アンドゥ対象の機能かつ描画キャンセルされていない時アンドゥデータ作成
             if (this.canUndo && !this.axpObj.isDrawCancel) {

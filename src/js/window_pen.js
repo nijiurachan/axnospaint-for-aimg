@@ -100,6 +100,9 @@ export class PenSystem extends ToolWindow {
         // ブラシ用キャンバス
         this.CANVAS.brush = document.createElement('canvas');
         this.CANVAS.brush_ctx = this.CANVAS.brush.getContext('2d');
+        // undo base image on GPU
+        this.CANVAS.undoBase = document.createElement('canvas');
+        this.CANVAS.undoBase_ctx = this.CANVAS.undoBase.getContext('2d');
         // ペンの太さプレビューキャンバス
         this.CANVAS.pensize = document.getElementById('axp_pen_canvas_previewPenSize');
         this.CANVAS.pensize.width = 100;
@@ -152,9 +155,11 @@ export class PenSystem extends ToolWindow {
         // 描画用仮想キャンバスサイズ指定
         this.CANVAS.draw.width = this.axpObj.x_size;
         this.CANVAS.brush.width = this.axpObj.x_size * this.axpObj.CONST.DRAW_MULTI;
+        this.CANVAS.undoBase.width = this.axpObj.x_size;
 
         this.CANVAS.draw.height = this.axpObj.y_size;
         this.CANVAS.brush.height = this.axpObj.y_size * this.axpObj.CONST.DRAW_MULTI;
+        this.CANVAS.undoBase.height = this.axpObj.y_size;
     }
     // ペンツール変更（メインボタン）
     switchMainButton(element, caller = null) {

@@ -90,6 +90,10 @@ export class LayerSystem extends ToolWindow {
     layerScrollEl = null;
     // 描画処理用の一時保存イメージ
     imageForUndo;
+    // stroke active flag: suppresses thumbnail updates during drawing
+    isStrokeActive = false;
+    // composite layer cache for fast drawing path
+    compositeFastPathActive = false;
     // カラータグリスト
     colorTagList = null;
     constructor(axpObj) {
@@ -132,6 +136,11 @@ export class LayerSystem extends ToolWindow {
         // クリッピング用
         this.CANVAS.clip = document.createElement('canvas');
         this.CANVAS.clip_ctx = this.CANVAS.clip.getContext('2d');
+        // composite layer cache
+        this.CANVAS.compositeBelow = document.createElement('canvas');
+        this.CANVAS.compositeBelowCtx = this.CANVAS.compositeBelow.getContext('2d');
+        this.CANVAS.compositeAbove = document.createElement('canvas');
+        this.CANVAS.compositeAboveCtx = this.CANVAS.compositeAbove.getContext('2d');
     }
     resetCanvas() {
         this.x_size = this.axpObj.x_size;
@@ -147,6 +156,10 @@ export class LayerSystem extends ToolWindow {
         this.CANVAS.merge.height = this.y_size;
         this.CANVAS.clip.width = this.x_size;
         this.CANVAS.clip.height = this.y_size;
+        this.CANVAS.compositeBelow.width = this.x_size;
+        this.CANVAS.compositeBelow.height = this.y_size;
+        this.CANVAS.compositeAbove.width = this.x_size;
+        this.CANVAS.compositeAbove.height = this.y_size;
 
         this.layer_counter = 0;
         this.currentLayer = null;
@@ -1374,6 +1387,129 @@ export class LayerSystem extends ToolWindow {
             this.layerObj[i].index = i;
         }
     }
+    _compositeLayerRange(targetCtx, startIdx, endIdx) {
+        targetCtx.beginPath();
+        targetCtx.clearRect(0, 0, this.x_size, this.y_size);
+        if (startIdx > endIdx || startIdx < 0 || endIdx >= this.layerObj.length) return;
+
+        let skipIdx = endIdx;
+        for (let idx = endIdx; idx >= startIdx; idx--) {
+            const item = this.layerObj[idx];
+            const isInvisible = (!item.checked) || item.isBlank;
+
+            let tmp_ctx;
+            if (this.axpObj.ENV.multiCanvas) {
+                tmp_ctx = this.CANVAS.layer_ctx[idx];
+            } else {
+                tmp_ctx = this.CANVAS.tmp_ctx;
+            }
+            if (!isInvisible) {
+                tmp_ctx.putImageData(item.image, 0, 0);
+            }
+
+            if (skipIdx < idx) continue;
+            if (item.mode === 'source-atop') continue;
+
+            let outputCanvas = tmp_ctx.canvas;
+
+            if (idx - 1 >= startIdx && this.layerObj[idx - 1].mode === 'source-atop') {
+                skipIdx = idx - 1;
+                this.CANVAS.clip_ctx.globalCompositeOperation = 'source-over';
+                this.CANVAS.clip_ctx.globalAlpha = 1;
+                this.CANVAS.clip_ctx.clearRect(0, 0, this.x_size, this.y_size);
+                while (skipIdx >= startIdx) {
+                    if (this.layerObj[skipIdx].mode === 'source-atop') {
+                        if (this.layerObj[skipIdx].checked) {
+                            if (this.axpObj.ENV.multiCanvas) {
+                                this.CANVAS.layer_ctx[skipIdx].putImageData(this.layerObj[skipIdx].image, 0, 0);
+                                this.CANVAS.clip_ctx.globalAlpha = this.layerObj[skipIdx].alpha / 100;
+                                this.CANVAS.clip_ctx.drawImage(this.CANVAS.layer_ctx[skipIdx].canvas, 0, 0);
+                            } else {
+                                tmp_ctx.putImageData(this.layerObj[skipIdx].image, 0, 0);
+                                this.CANVAS.clip_ctx.globalAlpha = this.layerObj[skipIdx].alpha / 100;
+                                this.CANVAS.clip_ctx.drawImage(tmp_ctx.canvas, 0, 0);
+                            }
+                        }
+                        skipIdx--;
+                    } else {
+                        break;
+                    }
+                }
+                this.CANVAS.merge_ctx.clearRect(0, 0, this.x_size, this.y_size);
+                this.CANVAS.merge_ctx.putImageData(item.image, 0, 0);
+                this.CANVAS.merge_ctx.globalCompositeOperation = 'source-atop';
+                this.CANVAS.merge_ctx.globalAlpha = 1;
+                this.CANVAS.merge_ctx.drawImage(this.CANVAS.clip_ctx.canvas, 0, 0);
+                outputCanvas = this.CANVAS.merge;
+            }
+
+            if (!isInvisible) {
+                targetCtx.globalCompositeOperation = item.mode;
+                targetCtx.globalAlpha = item.alpha / 100;
+                targetCtx.drawImage(outputCanvas, 0, 0);
+            }
+        }
+    }
+    activateFastPath() {
+        const currentIdx = this.getLayerIndex(this.currentLayer.dataset.id);
+        const item = this.layerObj[currentIdx];
+        if (item.mode === 'source-atop') {
+            this.compositeFastPathActive = false;
+            return;
+        }
+        if (currentIdx > 0 && this.layerObj[currentIdx - 1].mode === 'source-atop') {
+            this.compositeFastPathActive = false;
+            return;
+        }
+        this._compositeLayerRange(
+            this.CANVAS.compositeBelowCtx,
+            currentIdx + 1, this.layerObj.length - 1
+        );
+        this._compositeLayerRange(
+            this.CANVAS.compositeAboveCtx,
+            0, currentIdx - 1
+        );
+        this.strokeCanvas = this.axpObj.penSystem.CANVAS.draw;
+        this.compositeFastPathActive = true;
+    }
+    deactivateFastPath() {
+        this.compositeFastPathActive = false;
+        this.strokeCanvas = null;
+    }
+    drawFast() {
+        const currentIdx = this.getLayerIndex(this.currentLayer.dataset.id);
+        const item = this.layerObj[currentIdx];
+
+        this.CANVAS.backscreen_trans_ctx.beginPath();
+        this.CANVAS.backscreen_trans_ctx.clearRect(0, 0, this.x_size, this.y_size);
+
+        this.CANVAS.backscreen_trans_ctx.globalCompositeOperation = 'source-over';
+        this.CANVAS.backscreen_trans_ctx.globalAlpha = 1;
+        this.CANVAS.backscreen_trans_ctx.drawImage(this.CANVAS.compositeBelow, 0, 0);
+
+        this.CANVAS.backscreen_trans_ctx.globalCompositeOperation = item.mode;
+        this.CANVAS.backscreen_trans_ctx.globalAlpha = item.alpha / 100;
+        this.CANVAS.backscreen_trans_ctx.drawImage(this.strokeCanvas, 0, 0);
+
+        this.CANVAS.backscreen_trans_ctx.globalCompositeOperation = 'source-over';
+        this.CANVAS.backscreen_trans_ctx.globalAlpha = 1;
+        this.CANVAS.backscreen_trans_ctx.drawImage(this.CANVAS.compositeAbove, 0, 0);
+
+        this.CANVAS.backscreen_white_ctx.beginPath();
+        this.CANVAS.backscreen_white_ctx.clearRect(0, 0, this.x_size, this.y_size);
+        this.CANVAS.backscreen_white_ctx.globalAlpha = 1;
+        this.CANVAS.backscreen_white_ctx.fillStyle = this.axpObj.defaultColor?.sub || '#FFFFFF';
+        this.CANVAS.backscreen_white_ctx.fillRect(0, 0, this.x_size, this.y_size);
+        this.CANVAS.backscreen_white_ctx.drawImage(this.CANVAS.backscreen_trans, 0, 0);
+
+        let ctx = this.axpObj.CANVAS.main_ctx;
+        if (this.axpObj.assistToolSystem.getIsTransparent()) {
+            ctx.clearRect(0, 0, this.x_size, this.y_size);
+            ctx.drawImage(this.CANVAS.backscreen_trans, 0, 0);
+        } else {
+            ctx.drawImage(this.CANVAS.backscreen_white, 0, 0);
+        }
+    }
     draw(changedLayerId = null) {
         let ctx = this.axpObj.CANVAS.main_ctx;
         //console.log('ここで描画', this.x_size, this.y_size);
@@ -1405,7 +1541,7 @@ export class LayerSystem extends ToolWindow {
             }
 
             // レイヤー毎のサムネイル描画（変動レイヤーのみ更新）
-            if (wantThumbUpdate) {
+            if (wantThumbUpdate && !this.isStrokeActive) {
                 const clearRect = Math.max(this.axpObj.x_size, this.axpObj.y_size);
                 this.CANVAS.thumbnail_ctx[idx].clearRect(0, 0, clearRect, clearRect);
                 if (!isInvisible) {
@@ -1556,7 +1692,9 @@ export class LayerSystem extends ToolWindow {
         // キャンバス更新が影響する表示を一括処理
         // changedLayerId が指定された場合、そのレイヤーのサムネのみ更新（他レイヤーのサムネ再描画を省略）
         this.draw(changedLayerId);
-        this.drawThumbnail();
+        if (!this.isStrokeActive) {
+            this.drawThumbnail();
+        }
     }
     // 画像をダウンロード
     downloadImage() {

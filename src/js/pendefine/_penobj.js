@@ -230,18 +230,41 @@ export class PenObj {
             return;
         }
         this.axpObj.pendingPenFlush = false;
-        // 描画した線に透明度を適用して、元画像と合成する
-        this.CANVAS.draw_ctx.putImageData(this.axpObj.layerSystem.load(), 0, 0);
-        this.CANVAS.draw_ctx.drawImage(this.CANVAS.brush, 0, 0);
-        // レイヤー更新
-        this.axpObj.layerSystem.write(
-            this.CANVAS.draw_ctx.getImageData(0, 0, this.axpObj.x_size, this.axpObj.y_size)
-        );
-        // 描画中はカレントレイヤーのみ変動するため、サムネ更新もそのレイヤーのみ
-        this.axpObj.layerSystem.updateCanvas(this.axpObj.layerSystem.getId());
+        if (this.axpObj.layerSystem.compositeFastPathActive) {
+            // GPU fast path: restore base via drawImage (GPU→GPU) instead of putImageData
+            const savedOp = this.CANVAS.draw_ctx.globalCompositeOperation;
+            const savedAlpha = this.CANVAS.draw_ctx.globalAlpha;
+            const savedShadowBlur = this.CANVAS.draw_ctx.shadowBlur;
+            this.CANVAS.draw_ctx.globalCompositeOperation = 'copy';
+            this.CANVAS.draw_ctx.globalAlpha = 1;
+            this.CANVAS.draw_ctx.shadowBlur = 0;
+            this.CANVAS.draw_ctx.drawImage(this.CANVAS.undoBase, 0, 0);
+            this.CANVAS.draw_ctx.globalCompositeOperation = savedOp;
+            this.CANVAS.draw_ctx.globalAlpha = savedAlpha;
+            this.CANVAS.draw_ctx.shadowBlur = savedShadowBlur;
+            this.CANVAS.draw_ctx.drawImage(this.CANVAS.brush, 0, 0);
+            this.axpObj.layerSystem.drawFast();
+        } else {
+            this.CANVAS.draw_ctx.putImageData(this.axpObj.layerSystem.load(), 0, 0);
+            this.CANVAS.draw_ctx.drawImage(this.CANVAS.brush, 0, 0);
+            this.axpObj.layerSystem.write(
+                this.CANVAS.draw_ctx.getImageData(0, 0, this.axpObj.x_size, this.axpObj.y_size)
+            );
+            this.axpObj.layerSystem.updateCanvas(this.axpObj.layerSystem.getId());
+        }
     }
     // 描画終了 - 共通処理
     end_common() {
+        if (this.axpObj.layerSystem.isStrokeActive) {
+            if (this.axpObj.layerSystem.compositeFastPathActive) {
+                this.axpObj.layerSystem.write(
+                    this.CANVAS.draw_ctx.getImageData(0, 0, this.axpObj.x_size, this.axpObj.y_size)
+                );
+            }
+            this.axpObj.layerSystem.isStrokeActive = false;
+            this.axpObj.layerSystem.deactivateFastPath();
+            this.axpObj.layerSystem.updateCanvas();
+        }
         if (this.axpObj.isDrawing) {
             // アンドゥ対象の機能かつ描画キャンセルされていない時アンドゥデータ作成
             if (this.canUndo && !this.axpObj.isDrawCancel) {

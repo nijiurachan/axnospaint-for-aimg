@@ -33,6 +33,11 @@ export class Move extends PenObj {
 
         // 描画開始時のイメージ記憶
         this.axpObj.layerSystem.save();
+        this.axpObj.layerSystem.isStrokeActive = true;
+        this.axpObj.layerSystem.activateFastPath();
+        if (this.axpObj.layerSystem.compositeFastPathActive) {
+            this.CANVAS.undoBase_ctx.putImageData(this.axpObj.layerSystem.load(), 0, 0);
+        }
     }
     // 描画中
     move(x, y) {
@@ -50,20 +55,24 @@ export class Move extends PenObj {
     draw() {
         let firstPoint = this.input_position[0];
         let currentPoint = this.input_position[this.input_position.length - 1];
+        let dx = currentPoint.x - firstPoint.x;
+        let dy = currentPoint.y - firstPoint.y;
 
-        // 表示領域をクリア
         this.CANVAS.draw_ctx.clearRect(0, 0, this.axpObj.x_size, this.axpObj.y_size);
-        // 移動した座標にイメージコピー
-        this.CANVAS.draw_ctx.putImageData(
-            this.axpObj.layerSystem.load(),
-            currentPoint.x - firstPoint.x,
-            currentPoint.y - firstPoint.y,
-        );
-        // レイヤー更新
-        this.axpObj.layerSystem.write(
-            this.CANVAS.draw_ctx.getImageData(0, 0, this.axpObj.x_size, this.axpObj.y_size)
-        );
-        this.axpObj.layerSystem.updateCanvas();
+        if (this.axpObj.layerSystem.compositeFastPathActive) {
+            this.CANVAS.draw_ctx.globalCompositeOperation = 'source-over';
+            this.CANVAS.draw_ctx.globalAlpha = 1;
+            this.CANVAS.draw_ctx.drawImage(this.CANVAS.undoBase, dx, dy);
+            this.axpObj.layerSystem.drawFast();
+        } else {
+            this.CANVAS.draw_ctx.putImageData(
+                this.axpObj.layerSystem.load(), dx, dy,
+            );
+            this.axpObj.layerSystem.write(
+                this.CANVAS.draw_ctx.getImageData(0, 0, this.axpObj.x_size, this.axpObj.y_size)
+            );
+            this.axpObj.layerSystem.updateCanvas();
+        }
     }
     // 描画終了
     end(x, y) {

@@ -1,5 +1,5 @@
 /*!
- * AXNOS Paint w/ nijiurachan custom version 3.0.0-alpha (2026-06-21T23:48:07.721Z)
+ * AXNOS Paint w/ nijiurachan custom version 3.0.0-alpha (2026-06-22T04:21:02.924Z)
  * (c) 2026- nijiurachan contributors
  * (c) 2022「悪の巣」部屋番号13番：「趣味の悪い大衆酒場[Mad end dance hall]」
  * Licensed under MPL 2.0
@@ -7951,7 +7951,7 @@ class ConfigSystem {
         let targetElement = document.getElementById('axp_config');
         targetElement.insertAdjacentHTML('afterbegin', this.axpObj.translateHTML(_html_config_txt__WEBPACK_IMPORTED_MODULE_2__));
         // バージョン情報の表示
-        document.getElementById('axp_config_div_versionInfo').textContent = `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-06-21T23:48:07.721Z"})`
+        document.getElementById('axp_config_div_versionInfo').textContent = `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-06-22T04:21:02.924Z"})`
     }
     // HTML展開
     deployHTML() {
@@ -10298,10 +10298,12 @@ function loadImageWithTimeout(url, timeout) {
 
 // イメージ比較（描画によってイメージが更新されたかどうかを判別する）
 function compareImages(img1, img2) {
-    if (img1.data.length != img2.data.length)
+    if (img1.data.length !== img2.data.length)
         return false;
-    for (var i = 0; i < img1.data.length; ++i) {
-        if (img1.data[i] != img2.data[i])
+    const a = new Uint32Array(img1.data.buffer);
+    const b = new Uint32Array(img2.data.buffer);
+    for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i])
             return false;
     }
     return true;
@@ -10778,6 +10780,9 @@ class DrawingPenBase extends _penobj_js__WEBPACK_IMPORTED_MODULE_0__.PenObj {
         this.axpObj.layerSystem.save();
         this.axpObj.layerSystem.isStrokeActive = true;
         this.axpObj.layerSystem.activateFastPath();
+        if (this.axpObj.layerSystem.compositeFastPathActive) {
+            this.CANVAS.undoBase_ctx.putImageData(this.axpObj.layerSystem.load(), 0, 0);
+        }
         this.init_brush(option);
         this.start_draw(x, y);
         return true;
@@ -11030,22 +11035,34 @@ class PenObj {
             return;
         }
         this.axpObj.pendingPenFlush = false;
-        // 描画した線に透明度を適用して、元画像と合成する
-        this.CANVAS.draw_ctx.putImageData(this.axpObj.layerSystem.load(), 0, 0);
-        this.CANVAS.draw_ctx.drawImage(this.CANVAS.brush, 0, 0);
-        // レイヤー更新
-        this.axpObj.layerSystem.write(
-            this.CANVAS.draw_ctx.getImageData(0, 0, this.axpObj.x_size, this.axpObj.y_size)
-        );
         if (this.axpObj.layerSystem.compositeFastPathActive) {
+            // GPU fast path: restore base via drawImage (GPU→GPU) instead of putImageData
+            const savedOp = this.CANVAS.draw_ctx.globalCompositeOperation;
+            const savedAlpha = this.CANVAS.draw_ctx.globalAlpha;
+            this.CANVAS.draw_ctx.globalCompositeOperation = 'copy';
+            this.CANVAS.draw_ctx.globalAlpha = 1;
+            this.CANVAS.draw_ctx.drawImage(this.CANVAS.undoBase, 0, 0);
+            this.CANVAS.draw_ctx.globalCompositeOperation = savedOp;
+            this.CANVAS.draw_ctx.globalAlpha = savedAlpha;
+            this.CANVAS.draw_ctx.drawImage(this.CANVAS.brush, 0, 0);
             this.axpObj.layerSystem.drawFast();
         } else {
+            this.CANVAS.draw_ctx.putImageData(this.axpObj.layerSystem.load(), 0, 0);
+            this.CANVAS.draw_ctx.drawImage(this.CANVAS.brush, 0, 0);
+            this.axpObj.layerSystem.write(
+                this.CANVAS.draw_ctx.getImageData(0, 0, this.axpObj.x_size, this.axpObj.y_size)
+            );
             this.axpObj.layerSystem.updateCanvas(this.axpObj.layerSystem.getId());
         }
     }
     // 描画終了 - 共通処理
     end_common() {
         if (this.axpObj.layerSystem.isStrokeActive) {
+            if (this.axpObj.layerSystem.compositeFastPathActive) {
+                this.axpObj.layerSystem.write(
+                    this.CANVAS.draw_ctx.getImageData(0, 0, this.axpObj.x_size, this.axpObj.y_size)
+                );
+            }
             this.axpObj.layerSystem.isStrokeActive = false;
             this.axpObj.layerSystem.deactivateFastPath();
             this.axpObj.layerSystem.updateCanvas();
@@ -12902,6 +12919,9 @@ class Move extends _penobj_js__WEBPACK_IMPORTED_MODULE_0__.PenObj {
         this.axpObj.layerSystem.save();
         this.axpObj.layerSystem.isStrokeActive = true;
         this.axpObj.layerSystem.activateFastPath();
+        if (this.axpObj.layerSystem.compositeFastPathActive) {
+            this.CANVAS.undoBase_ctx.putImageData(this.axpObj.layerSystem.load(), 0, 0);
+        }
     }
     // 描画中
     move(x, y) {
@@ -12919,22 +12939,22 @@ class Move extends _penobj_js__WEBPACK_IMPORTED_MODULE_0__.PenObj {
     draw() {
         let firstPoint = this.input_position[0];
         let currentPoint = this.input_position[this.input_position.length - 1];
+        let dx = currentPoint.x - firstPoint.x;
+        let dy = currentPoint.y - firstPoint.y;
 
-        // 表示領域をクリア
         this.CANVAS.draw_ctx.clearRect(0, 0, this.axpObj.x_size, this.axpObj.y_size);
-        // 移動した座標にイメージコピー
-        this.CANVAS.draw_ctx.putImageData(
-            this.axpObj.layerSystem.load(),
-            currentPoint.x - firstPoint.x,
-            currentPoint.y - firstPoint.y,
-        );
-        // レイヤー更新
-        this.axpObj.layerSystem.write(
-            this.CANVAS.draw_ctx.getImageData(0, 0, this.axpObj.x_size, this.axpObj.y_size)
-        );
         if (this.axpObj.layerSystem.compositeFastPathActive) {
+            this.CANVAS.draw_ctx.globalCompositeOperation = 'source-over';
+            this.CANVAS.draw_ctx.globalAlpha = 1;
+            this.CANVAS.draw_ctx.drawImage(this.CANVAS.undoBase, dx, dy);
             this.axpObj.layerSystem.drawFast();
         } else {
+            this.CANVAS.draw_ctx.putImageData(
+                this.axpObj.layerSystem.load(), dx, dy,
+            );
+            this.axpObj.layerSystem.write(
+                this.CANVAS.draw_ctx.getImageData(0, 0, this.axpObj.x_size, this.axpObj.y_size)
+            );
             this.axpObj.layerSystem.updateCanvas();
         }
     }
@@ -17400,10 +17420,12 @@ class LayerSystem extends _window_js__WEBPACK_IMPORTED_MODULE_0__.ToolWindow {
             this.CANVAS.compositeAboveCtx,
             0, currentIdx - 1
         );
+        this.strokeCanvas = this.axpObj.penSystem.CANVAS.draw;
         this.compositeFastPathActive = true;
     }
     deactivateFastPath() {
         this.compositeFastPathActive = false;
+        this.strokeCanvas = null;
     }
     drawFast() {
         const currentIdx = this.getLayerIndex(this.currentLayer.dataset.id);
@@ -17416,18 +17438,9 @@ class LayerSystem extends _window_js__WEBPACK_IMPORTED_MODULE_0__.ToolWindow {
         this.CANVAS.backscreen_trans_ctx.globalAlpha = 1;
         this.CANVAS.backscreen_trans_ctx.drawImage(this.CANVAS.compositeBelow, 0, 0);
 
-        if (item.checked && !item.isBlank) {
-            let tmp_ctx;
-            if (this.axpObj.ENV.multiCanvas) {
-                tmp_ctx = this.CANVAS.layer_ctx[currentIdx];
-            } else {
-                tmp_ctx = this.CANVAS.tmp_ctx;
-            }
-            tmp_ctx.putImageData(item.image, 0, 0);
-            this.CANVAS.backscreen_trans_ctx.globalCompositeOperation = item.mode;
-            this.CANVAS.backscreen_trans_ctx.globalAlpha = item.alpha / 100;
-            this.CANVAS.backscreen_trans_ctx.drawImage(tmp_ctx.canvas, 0, 0);
-        }
+        this.CANVAS.backscreen_trans_ctx.globalCompositeOperation = item.mode;
+        this.CANVAS.backscreen_trans_ctx.globalAlpha = item.alpha / 100;
+        this.CANVAS.backscreen_trans_ctx.drawImage(this.strokeCanvas, 0, 0);
 
         this.CANVAS.backscreen_trans_ctx.globalCompositeOperation = 'source-over';
         this.CANVAS.backscreen_trans_ctx.globalAlpha = 1;
@@ -19147,6 +19160,9 @@ class PenSystem extends _window_js__WEBPACK_IMPORTED_MODULE_0__.ToolWindow {
         // ブラシ用キャンバス
         this.CANVAS.brush = document.createElement('canvas');
         this.CANVAS.brush_ctx = this.CANVAS.brush.getContext('2d');
+        // undo base image on GPU
+        this.CANVAS.undoBase = document.createElement('canvas');
+        this.CANVAS.undoBase_ctx = this.CANVAS.undoBase.getContext('2d');
         // ペンの太さプレビューキャンバス
         this.CANVAS.pensize = document.getElementById('axp_pen_canvas_previewPenSize');
         this.CANVAS.pensize.width = 100;
@@ -19199,9 +19215,11 @@ class PenSystem extends _window_js__WEBPACK_IMPORTED_MODULE_0__.ToolWindow {
         // 描画用仮想キャンバスサイズ指定
         this.CANVAS.draw.width = this.axpObj.x_size;
         this.CANVAS.brush.width = this.axpObj.x_size * this.axpObj.CONST.DRAW_MULTI;
+        this.CANVAS.undoBase.width = this.axpObj.x_size;
 
         this.CANVAS.draw.height = this.axpObj.y_size;
         this.CANVAS.brush.height = this.axpObj.y_size * this.axpObj.CONST.DRAW_MULTI;
+        this.CANVAS.undoBase.height = this.axpObj.y_size;
     }
     // ペンツール変更（メインボタン）
     switchMainButton(element, caller = null) {
@@ -21413,7 +21431,7 @@ __webpack_require__.r(__webpack_exports__);
     axpObj;
     constructor(option) {
         console.log('version:', "3.0.0-alpha");
-        console.log('build:', "2026-06-21T23:48:07.721Z");
+        console.log('build:', "2026-06-22T04:21:02.924Z");
         (async () => {
             // 追加辞書オプションチェック
             let additionalDictionaryJSON = null;
@@ -21794,7 +21812,7 @@ __webpack_require__.r(__webpack_exports__);
     }
     // バージョン
     version() {
-        return `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-06-21T23:48:07.721Z"})`;
+        return `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-06-22T04:21:02.924Z"})`;
     }
     // 画面の表示／非表示
     on() {
@@ -21806,7 +21824,7 @@ __webpack_require__.r(__webpack_exports__);
         this.axpObj.isClose = true;
     }
     static ver() {
-        return `version ${"3.0.0-alpha"} (${"2026-06-21T23:48:07.721Z"})`;
+        return `version ${"3.0.0-alpha"} (${"2026-06-22T04:21:02.924Z"})`;
     }
 });
 

@@ -250,10 +250,12 @@ export function loadImageWithTimeout(url, timeout) {
 
 // イメージ比較（描画によってイメージが更新されたかどうかを判別する）
 export function compareImages(img1, img2) {
-    if (img1.data.length != img2.data.length)
+    if (img1.data.length !== img2.data.length)
         return false;
-    for (var i = 0; i < img1.data.length; ++i) {
-        if (img1.data[i] != img2.data[i])
+    const a = new Uint32Array(img1.data.buffer);
+    const b = new Uint32Array(img2.data.buffer);
+    for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i])
             return false;
     }
     return true;

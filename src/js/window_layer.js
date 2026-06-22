@@ -1469,10 +1469,12 @@ export class LayerSystem extends ToolWindow {
             this.CANVAS.compositeAboveCtx,
             0, currentIdx - 1
         );
+        this.strokeCanvas = this.axpObj.penSystem.CANVAS.draw;
         this.compositeFastPathActive = true;
     }
     deactivateFastPath() {
         this.compositeFastPathActive = false;
+        this.strokeCanvas = null;
     }
     drawFast() {
         const currentIdx = this.getLayerIndex(this.currentLayer.dataset.id);
@@ -1485,18 +1487,9 @@ export class LayerSystem extends ToolWindow {
         this.CANVAS.backscreen_trans_ctx.globalAlpha = 1;
         this.CANVAS.backscreen_trans_ctx.drawImage(this.CANVAS.compositeBelow, 0, 0);
 
-        if (item.checked && !item.isBlank) {
-            let tmp_ctx;
-            if (this.axpObj.ENV.multiCanvas) {
-                tmp_ctx = this.CANVAS.layer_ctx[currentIdx];
-            } else {
-                tmp_ctx = this.CANVAS.tmp_ctx;
-            }
-            tmp_ctx.putImageData(item.image, 0, 0);
-            this.CANVAS.backscreen_trans_ctx.globalCompositeOperation = item.mode;
-            this.CANVAS.backscreen_trans_ctx.globalAlpha = item.alpha / 100;
-            this.CANVAS.backscreen_trans_ctx.drawImage(tmp_ctx.canvas, 0, 0);
-        }
+        this.CANVAS.backscreen_trans_ctx.globalCompositeOperation = item.mode;
+        this.CANVAS.backscreen_trans_ctx.globalAlpha = item.alpha / 100;
+        this.CANVAS.backscreen_trans_ctx.drawImage(this.strokeCanvas, 0, 0);
 
         this.CANVAS.backscreen_trans_ctx.globalCompositeOperation = 'source-over';
         this.CANVAS.backscreen_trans_ctx.globalAlpha = 1;

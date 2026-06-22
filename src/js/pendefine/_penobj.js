@@ -234,11 +234,14 @@ export class PenObj {
             // GPU fast path: restore base via drawImage (GPU→GPU) instead of putImageData
             const savedOp = this.CANVAS.draw_ctx.globalCompositeOperation;
             const savedAlpha = this.CANVAS.draw_ctx.globalAlpha;
+            const savedShadowBlur = this.CANVAS.draw_ctx.shadowBlur;
             this.CANVAS.draw_ctx.globalCompositeOperation = 'copy';
             this.CANVAS.draw_ctx.globalAlpha = 1;
+            this.CANVAS.draw_ctx.shadowBlur = 0;
             this.CANVAS.draw_ctx.drawImage(this.CANVAS.undoBase, 0, 0);
             this.CANVAS.draw_ctx.globalCompositeOperation = savedOp;
             this.CANVAS.draw_ctx.globalAlpha = savedAlpha;
+            this.CANVAS.draw_ctx.shadowBlur = savedShadowBlur;
             this.CANVAS.draw_ctx.drawImage(this.CANVAS.brush, 0, 0);
             this.axpObj.layerSystem.drawFast();
         } else {

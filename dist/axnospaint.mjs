@@ -1,5 +1,5 @@
 /*!
- * AXNOS Paint w/ nijiurachan custom version 3.0.0-alpha (2026-06-22T04:21:02.924Z)
+ * AXNOS Paint w/ nijiurachan custom version 3.0.0-alpha (2026-06-22T05:15:29.368Z)
  * (c) 2026- nijiurachan contributors
  * (c) 2022「悪の巣」部屋番号13番：「趣味の悪い大衆酒場[Mad end dance hall]」
  * Licensed under MPL 2.0
@@ -7951,7 +7951,7 @@ class ConfigSystem {
         let targetElement = document.getElementById('axp_config');
         targetElement.insertAdjacentHTML('afterbegin', this.axpObj.translateHTML(_html_config_txt__WEBPACK_IMPORTED_MODULE_2__));
         // バージョン情報の表示
-        document.getElementById('axp_config_div_versionInfo').textContent = `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-06-22T04:21:02.924Z"})`
+        document.getElementById('axp_config_div_versionInfo').textContent = `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-06-22T05:15:29.368Z"})`
     }
     // HTML展開
     deployHTML() {
@@ -11039,11 +11039,14 @@ class PenObj {
             // GPU fast path: restore base via drawImage (GPU→GPU) instead of putImageData
             const savedOp = this.CANVAS.draw_ctx.globalCompositeOperation;
             const savedAlpha = this.CANVAS.draw_ctx.globalAlpha;
+            const savedShadowBlur = this.CANVAS.draw_ctx.shadowBlur;
             this.CANVAS.draw_ctx.globalCompositeOperation = 'copy';
             this.CANVAS.draw_ctx.globalAlpha = 1;
+            this.CANVAS.draw_ctx.shadowBlur = 0;
             this.CANVAS.draw_ctx.drawImage(this.CANVAS.undoBase, 0, 0);
             this.CANVAS.draw_ctx.globalCompositeOperation = savedOp;
             this.CANVAS.draw_ctx.globalAlpha = savedAlpha;
+            this.CANVAS.draw_ctx.shadowBlur = savedShadowBlur;
             this.CANVAS.draw_ctx.drawImage(this.CANVAS.brush, 0, 0);
             this.axpObj.layerSystem.drawFast();
         } else {
@@ -17461,9 +17464,6 @@ class LayerSystem extends _window_js__WEBPACK_IMPORTED_MODULE_0__.ToolWindow {
             ctx.drawImage(this.CANVAS.backscreen_white, 0, 0);
         }
     }
-    updateCanvasFast() {
-        this.drawFast();
-    }
     draw(changedLayerId = null) {
         let ctx = this.axpObj.CANVAS.main_ctx;
         //console.log('ここで描画', this.x_size, this.y_size);
@@ -21431,7 +21431,7 @@ __webpack_require__.r(__webpack_exports__);
     axpObj;
     constructor(option) {
         console.log('version:', "3.0.0-alpha");
-        console.log('build:', "2026-06-22T04:21:02.924Z");
+        console.log('build:', "2026-06-22T05:15:29.368Z");
         (async () => {
             // 追加辞書オプションチェック
             let additionalDictionaryJSON = null;
@@ -21812,7 +21812,7 @@ __webpack_require__.r(__webpack_exports__);
     }
     // バージョン
     version() {
-        return `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-06-22T04:21:02.924Z"})`;
+        return `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-06-22T05:15:29.368Z"})`;
     }
     // 画面の表示／非表示
     on() {
@@ -21824,7 +21824,7 @@ __webpack_require__.r(__webpack_exports__);
         this.axpObj.isClose = true;
     }
     static ver() {
-        return `version ${"3.0.0-alpha"} (${"2026-06-22T04:21:02.924Z"})`;
+        return `version ${"3.0.0-alpha"} (${"2026-06-22T05:15:29.368Z"})`;
     }
 });
 

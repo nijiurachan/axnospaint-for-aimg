@@ -1510,9 +1510,6 @@ export class LayerSystem extends ToolWindow {
             ctx.drawImage(this.CANVAS.backscreen_white, 0, 0);
         }
     }
-    updateCanvasFast() {
-        this.drawFast();
-    }
     draw(changedLayerId = null) {
         let ctx = this.axpObj.CANVAS.main_ctx;
         //console.log('ここで描画', this.x_size, this.y_size);

@@ -256,7 +256,7 @@ export class PenObj {
     // 描画終了 - 共通処理
     end_common() {
         if (this.axpObj.layerSystem.isStrokeActive) {
-            if (this.axpObj.layerSystem.compositeFastPathActive) {
+            if (this.axpObj.layerSystem.compositeFastPathActive && !this.axpObj.isDrawCancel) {
                 this.axpObj.layerSystem.write(
                     this.CANVAS.draw_ctx.getImageData(0, 0, this.axpObj.x_size, this.axpObj.y_size)
                 );

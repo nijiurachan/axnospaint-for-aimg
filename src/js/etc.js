@@ -98,6 +98,17 @@ export function rotateVector(dx, dy, rad) {
     };
 }
 /**
+ * 角度(度数)を -180〜180 の範囲に正規化する（角度差分の算出に使用）
+ * @param {number} deg
+ * @returns {number}
+ */
+export function normalizeDeg180(deg) {
+    let d = deg % 360;
+    if (d > 180) { d -= 360; }
+    if (d < -180) { d += 360; }
+    return d;
+}
+/**
  * ２点の中点
  * @param {*} p1 
  * @param {*} p2 

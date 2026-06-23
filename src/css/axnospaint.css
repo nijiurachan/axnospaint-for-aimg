@@ -218,6 +218,30 @@ body {
   z-index: 800;
 }
 
+/* 回転操作子（ハンドツール時に上部中央へ表示。押して左右ドラッグで回転） */
+#axp_canvas_div_rotateHandle {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 40px;
+  z-index: 700;
+  border-radius: 50%;
+  background-color: rgba(0, 0, 0, 0.45);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12a9 9 0 1 1-2.64-6.36'/%3E%3Cpolyline points='21 3 21 9 15 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 26px 26px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+#axp_canvas_div_rotateHandle:active {
+  cursor: grabbing;
+}
+
 /* デバッグ情報 */
 #axp_canvas_div_debugInfo {
   position: absolute;

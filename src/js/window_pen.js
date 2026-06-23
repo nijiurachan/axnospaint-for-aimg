@@ -904,6 +904,9 @@ export class PenSystem extends ToolWindow {
 
         // 選択されたペンの名称をウィンドウに表示
         document.getElementById('axp_pen_span_penName').textContent = this.getName();
+
+        // 回転操作子の表示／非表示をペンモードに追従させる（ハンドツール時のみ表示）
+        this.axpObj.updateRotateHandle();
     }
     previewPenSize() {
         this.penObj[this.pen_mode].previewPenSize();

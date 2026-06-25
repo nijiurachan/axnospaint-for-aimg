@@ -62,6 +62,7 @@ export class Move extends PenObj {
         if (this.axpObj.layerSystem.compositeFastPathActive) {
             this.CANVAS.draw_ctx.globalCompositeOperation = 'source-over';
             this.CANVAS.draw_ctx.globalAlpha = 1;
+            this.CANVAS.draw_ctx.shadowBlur = 0; // 移動時にぼかしを引き継がない（前のペンの残存値対策）
             this.CANVAS.draw_ctx.drawImage(this.CANVAS.undoBase, dx, dy);
             this.axpObj.layerSystem.drawFast();
         } else {

@@ -1,8 +1,8 @@
 /* 共通クラス */
 
-/* 要素非表示 */
+/* 要素非表示（IDセレクタのdisplay指定より優先させるため!important） */
 .axpc_NONE {
-    display: none;
+    display: none !important;
 }
 
 /* 要素非表示（レイアウト変更なし） */
@@ -96,7 +96,7 @@
 
 /* オーバーレイノブ（ドラッグ操作用） */
 .axpc_overlay_knob {
-    border: 3px solid var(--axp-knob-border, #777);
+    border: 3px solid var(--axp-knob-border, #eee);
     cursor: grab;
 }
 
@@ -107,7 +107,7 @@
 
 /* オーバーレイボタン（タップ操作用） */
 .axpc_overlay_btn {
-    border: 2px solid var(--axp-knob-border, #777);
+    border: 2px solid var(--axp-btn-border, #ccc);
     cursor: pointer;
 }
 

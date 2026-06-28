@@ -60,6 +60,10 @@ module.exports = {
             {
                 test: /\.png/,
                 type: 'asset/inline'
+            },
+            {
+                test: /\.svg$/,
+                type: 'asset/inline'
             }
         ],
     },

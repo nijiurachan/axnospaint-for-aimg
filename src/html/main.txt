@@ -29,6 +29,13 @@
 				<!-- ペンの太さを表示する補助円 -->
 				<div id="axp_canvas_div_penCursor"></div>
 
+				<!-- 回転操作子グループ（ハンドツール時のみ表示） -->
+				<div id="axp_canvas_div_rotateGroup" class="axpc_NONE">
+					<div id="axp_canvas_div_rotateLeft" class="axpc_overlay_btn axpc_MSG" data-msg="@AST0020"></div>
+					<div id="axp_canvas_div_rotateHandle" class="axpc_overlay_knob axpc_MSG" data-msg="@AST0022"></div>
+					<div id="axp_canvas_div_rotateRight" class="axpc_overlay_btn axpc_MSG" data-msg="@AST0021"></div>
+				</div>
+
 				<!-- ポインタ座標表示領域 -->
 				<div id="axp_canvas_div_pointerPosition" class="axpc_NONE"></div>
 

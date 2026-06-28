@@ -1,6 +1,7 @@
 // @description ペン定義：蓄積系共通＞ドットペン
 
 import { AccumulativePenBase } from './_accumulativepen.js';
+import { rotateVector } from '../etc.js';
 
 // ドット
 export class Dot extends AccumulativePenBase {
@@ -26,21 +27,22 @@ export class Dot extends AccumulativePenBase {
     }
     // ドット用
     getCursorPositionDot(e) {
-        // ヘッダを表示している場合、座標がズレるので補正する
-        const rect = this.axpObj.ELEMENT.view.getBoundingClientRect();
-
-        // ペンの太さ単位でドットを描画するため、太さに応じて座標ををずらす
-        let crect = this.axpObj.CANVAS.main.getBoundingClientRect();
-        // キャンバス座標を、ペンの太さで割り（剰余切り捨て）、ペンの太さを乗算する
-        let t_canvas_x = Math.floor((e.clientX - crect.left) * 100 / this.axpObj.scale);
-        let t_canvas_y = Math.floor((e.clientY - crect.top) * 100 / this.axpObj.scale);
-        let t_width = this.size;
-        let t_dot_x = Math.floor(t_canvas_x / t_width) * t_width;
-        let t_dot_y = Math.floor(t_canvas_y / t_width) * t_width;
-        let x = parseInt(t_dot_x * this.axpObj.scale / 100) + crect.left - rect.left;
-        let y = parseInt(t_dot_y * this.axpObj.scale / 100) + crect.top - rect.top;
-
-        return { x: x, y: y };
+        const rectView = this.axpObj.ELEMENT.view.getBoundingClientRect();
+        const scale = this.axpObj.scale;
+        // ポインタのキャンバス座標（回転対応の中核処理を利用）
+        const pos = this.axpObj.calcScaleCoordinates(e);
+        // ペンの太さ単位でドットを描画するため、太さ単位にスナップした左上キャンバス座標を求める
+        const t_width = this.size;
+        const t_dot_x = Math.floor(pos.x / t_width) * t_width;
+        const t_dot_y = Math.floor(pos.y / t_width) * t_width;
+        // スナップ位置（キャンバス左上px）を非回転状態のview内座標へ変換
+        const ux = rectView.width / 2 - (this.axpObj.x_size / 2 + this.axpObj.cameraX) * scale / 100 + t_dot_x * scale / 100;
+        const uy = rectView.height / 2 - (this.axpObj.y_size / 2 + this.axpObj.cameraY) * scale / 100 + t_dot_y * scale / 100;
+        // view中心を不動点として +rotation 回転させた表示位置を返す
+        const cx = rectView.width / 2;
+        const cy = rectView.height / 2;
+        const r = rotateVector(ux - cx, uy - cy, this.axpObj.rotation * Math.PI / 180);
+        return { x: parseInt(r.x + cx), y: parseInt(r.y + cy) };
     }
     start_draw() {
         this.img_draw = new ImageData(this.axpObj.x_size, this.axpObj.y_size);

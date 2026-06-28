@@ -21,4 +21,18 @@ export class Round extends StampPenBase {
 
         this.init_save();
     }
+
+    // 芯/輪郭の二重描画: 輪郭を半透明で描いた上に縮小半径の芯を重ねる
+    _drawCommits(commits, prevPoint) {
+        if (commits.length === 0) return prevPoint;
+        this._drawPointSequence(commits, 0.3, prevPoint);
+        return this._drawPointSequence(commits, 1.0, prevPoint,
+            r => this._coreRadiusXform(r));
+    }
+
+    _coreRadiusXform(r) {
+        if (r > 1.4) return r - 0.7;
+        if (r > 0.5) return (2 * r - 1) / 9 + 0.5;
+        return r;
+    }
 }

@@ -16,7 +16,7 @@ import { ConfigSystem } from './config.js';
 import { PostSystem } from './post.js';
 import { SaveSystem } from './saveload.js';
 import { KeyboardSystem } from './keyboard.js';
-import { UTIL, loadImageWithTimeout, calcDistance, adjustInRange, getFileNameFromURL } from './etc.js';
+import { UTIL, loadImageWithTimeout, calcDistance, adjustInRange, getFileNameFromURL, rotateVector, normalizeDeg180 } from './etc.js';
 import { Message } from './message.js';
 import { DebugLog } from './debuglog.js';
 
@@ -52,6 +52,11 @@ export class AXPObj {
         SCALE_TABLE_MAX: 50,
         MESSAGE_KEEP_TIME: 2000,
         DRAW_MULTI: 1,
+        // 回転ジェスチャ
+        ROTATE_WALL_VELOCITY: 0.18,     // 0/90/180/270°の壁を突破するのに必要な角速度（度/ミリ秒）
+        ROTATE_DRAG_SENSITIVITY: 0.5,   // PC回転操作子の左右ドラッグ感度（度/px）
+        ROTATE_TWIST_NOISE: 4,          // ネジレ判定に使う速度ベクトルの最小長（px）
+        TWIST_HISTORY_LEN: 3,           // 速度ベクトル算出に使うフレーム数
     }
     // 画面表示用キャンバス（※メモリ上のみで使用するcanvasは使用する各クラスで定義）
     CANVAS = {
@@ -169,6 +174,9 @@ export class AXPObj {
     cameraX = 0;
     cameraY = 0;
 
+    // 回転表示角度（度数、[0,360)。あくまで表示の回転であり画像編集ではない）
+    rotation = 0;
+
     // 背景タイルプレビュー表示用
     url_backgroundimage;
 
@@ -189,6 +197,13 @@ export class AXPObj {
     baseScale = -1;
     baseCameraX = -1;
     baseCameraY = -1;
+
+    // 回転ジェスチャ（ネジレ操作）用
+    twistHistA = [];        // 指A(evCache[0])の直近座標履歴（速度ベクトル算出用）
+    twistHistB = [];        // 指B(evCache[1])の直近座標履歴
+    prevLineAngle = 0;      // 直近フレームのA→B線分角度（度）
+    prevGestureTime = 0;    // 角速度算出用のタイムスタンプ
+    isTwisting = false;     // ジェスチャ中の回転ロックフラグ
 
     longPressTimerID = null;
     touchTimerID = null;
@@ -463,6 +478,15 @@ export class AXPObj {
                     }
                     // 初期距離差分
                     this.baseDiff = calcDistance(this.evCache[0].clientX, this.evCache[0].clientY, this.evCache[1].clientX, this.evCache[1].clientY);
+                    // 回転ジェスチャ用の初期状態（A=evCache[0], B=evCache[1]）
+                    this.twistHistA = [{ x: this.evCache[0].clientX, y: this.evCache[0].clientY }];
+                    this.twistHistB = [{ x: this.evCache[1].clientX, y: this.evCache[1].clientY }];
+                    this.prevLineAngle = Math.atan2(
+                        this.evCache[1].clientY - this.evCache[0].clientY,
+                        this.evCache[1].clientX - this.evCache[0].clientX
+                    ) * 180 / Math.PI;
+                    this.prevGestureTime = e.timeStamp;
+                    this.isTwisting = false;
                 };
             }
 
@@ -713,19 +737,58 @@ export class AXPObj {
                         }
                         // スワイプが確定していれば、スワイプ処理を行う
                         if (this.touchTimerID === null) {
-                            // ピンチによる拡大／縮小
-                            if (this.config('axp_config_form_touchZoom') === 'on') {
-                                // 拡大率（初期値）に差分を加算する（指定可能範囲を超える場合は補正する）
-                                this.scale = adjustInRange(this.baseScale + diffDistance, this.CONST.SCALE_MIN, this.CONST.SCALE_MAX);
-                            };
-                            // カメラ位置移動
-                            if (this.config('axp_config_form_touchHand') === 'on') {
-
-                                this.cameraX = Math.round(this.baseCameraX + (diffX * 100 / this.scale));
-                                this.cameraY = Math.round(this.baseCameraY + (diffY * 100 / this.scale));
-                            };
-                            // キャンバス表示更新
-                            this.refreshCanvas();
+                            // 現在のA→B線分角度（度）
+                            const ax = this.evCache[0].clientX, ay = this.evCache[0].clientY;
+                            const bx = this.evCache[1].clientX, by = this.evCache[1].clientY;
+                            const lineAngle = Math.atan2(by - ay, bx - ax) * 180 / Math.PI;
+                            // 各指の座標履歴を更新（速度ベクトル算出用）
+                            this.twistHistA.push({ x: ax, y: ay });
+                            if (this.twistHistA.length > this.CONST.TWIST_HISTORY_LEN) this.twistHistA.shift();
+                            this.twistHistB.push({ x: bx, y: by });
+                            if (this.twistHistB.length > this.CONST.TWIST_HISTORY_LEN) this.twistHistB.shift();
+                            // ネジレ判定（一度ネジレと判定したらジェスチャ終了まで維持）
+                            if (!this.isTwisting && this.twistHistA.length >= this.CONST.TWIST_HISTORY_LEN) {
+                                // 直近数フレームの速度ベクトル（累積変位ではなくフレーム間差分）
+                                const oldA = this.twistHistA[0], oldB = this.twistHistB[0];
+                                const vax = ax - oldA.x, vay = ay - oldA.y;
+                                const vbx = bx - oldB.x, vby = by - oldB.y;
+                                const lenA = Math.sqrt(vax * vax + vay * vay);
+                                const lenB = Math.sqrt(vbx * vbx + vby * vby);
+                                if (lenA >= this.CONST.ROTATE_TWIST_NOISE && lenB >= this.CONST.ROTATE_TWIST_NOISE) {
+                                    // 線分方向θに対する各点の移動方向の相対角
+                                    const relA = normalizeDeg180(Math.atan2(vay, vax) * 180 / Math.PI - lineAngle);
+                                    const relB = normalizeDeg180(Math.atan2(vby, vbx) * 180 / Math.PI - lineAngle);
+                                    const inPos = (v) => v >= 45 && v <= 135;
+                                    const inNeg = (v) => v >= -135 && v <= -45;
+                                    if ((inPos(relA) && inNeg(relB)) || (inPos(relB) && inNeg(relA))) {
+                                        this.isTwisting = true;
+                                    }
+                                }
+                            }
+                            if (this.isTwisting) {
+                                // ネジレ操作中：拡縮・パンをキャンセルし回転のみ適用
+                                const deltaLine = normalizeDeg180(lineAngle - this.prevLineAngle);
+                                const dt = e.timeStamp - this.prevGestureTime;
+                                this.applyRotationDelta(deltaLine, dt);
+                            } else {
+                                // ピンチによる拡大／縮小
+                                if (this.config('axp_config_form_touchZoom') === 'on') {
+                                    // 拡大率（初期値）に差分を加算する（指定可能範囲を超える場合は補正する）
+                                    this.scale = adjustInRange(this.baseScale + diffDistance, this.CONST.SCALE_MIN, this.CONST.SCALE_MAX);
+                                };
+                                // カメラ位置移動
+                                if (this.config('axp_config_form_touchHand') === 'on') {
+                                    // 画面上のドラッグ差分を -rotation だけ回し、カメラ（非回転）座標系へ変換
+                                    const r = rotateVector(diffX, diffY, -this.rotation * Math.PI / 180);
+                                    this.cameraX = Math.round(this.baseCameraX + (r.x * 100 / this.scale));
+                                    this.cameraY = Math.round(this.baseCameraY + (r.y * 100 / this.scale));
+                                };
+                                // キャンバス表示更新
+                                this.refreshCanvas();
+                            }
+                            // 角速度算出のため毎フレーム更新
+                            this.prevLineAngle = lineAngle;
+                            this.prevGestureTime = e.timeStamp;
                         }
                     }
                 }
@@ -762,6 +825,12 @@ export class AXPObj {
                     //console.log('認識されていないポインタIDを検出');
                     //this.evCache.splice(0);
                 }
+                // 2点未満になったらネジレ回転ロックを解除
+                if (this.evCache.length < 2) {
+                    this.isTwisting = false;
+                    this.twistHistA = [];
+                    this.twistHistB = [];
+                }
             }
             if (e.isPrimary) {
                 // キャンバス座標計算
@@ -782,6 +851,12 @@ export class AXPObj {
                 );
                 if (index !== -1) {
                     this.evCache.splice(index, 1);
+                }
+                // 2点未満になったらネジレ回転ロックを解除
+                if (this.evCache.length < 2) {
+                    this.isTwisting = false;
+                    this.twistHistA = [];
+                    this.twistHistB = [];
                 }
                 // 描画が行われていた時
                 if (this.touchTimerID && this.isDrawn) {
@@ -833,6 +908,57 @@ export class AXPObj {
             //console.log('pointerleave');
             removeEvent(e);
         });
+
+        // 回転操作子（PC/タブレット）：中央＝押して左右ドラッグで回転、左右＝タップで45度回転
+        const rotateHandle = document.getElementById('axp_canvas_div_rotateHandle');
+        if (rotateHandle) {
+            rotateHandle.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                let prevX = e.clientX;
+                let prevTime = e.timeStamp;
+                const onMove = (ev) => {
+                    const dx = ev.clientX - prevX;
+                    const deltaDeg = dx * this.CONST.ROTATE_DRAG_SENSITIVITY;
+                    const dt = ev.timeStamp - prevTime;
+                    this.applyRotationDelta(deltaDeg, dt);
+                    prevX = ev.clientX;
+                    prevTime = ev.timeStamp;
+                };
+                const cleanup = () => {
+                    window.removeEventListener('pointermove', onMove);
+                    window.removeEventListener('pointerup', cleanup);
+                    window.removeEventListener('pointercancel', cleanup);
+                    window.removeEventListener('blur', cleanup);
+                };
+                window.addEventListener('pointermove', onMove);
+                window.addEventListener('pointerup', cleanup);
+                window.addEventListener('pointercancel', cleanup);
+                window.addEventListener('blur', cleanup);
+            });
+        }
+
+        const rotateLeft = document.getElementById('axp_canvas_div_rotateLeft');
+        if (rotateLeft) {
+            rotateLeft.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            });
+            rotateLeft.addEventListener('click', () => {
+                this.rotateView45(-1);
+            });
+        }
+
+        const rotateRight = document.getElementById('axp_canvas_div_rotateRight');
+        if (rotateRight) {
+            rotateRight.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            });
+            rotateRight.addEventListener('click', () => {
+                this.rotateView45(+1);
+            });
+        }
 
         // マウスホイール
         document.addEventListener('wheel', (e) => { this.mouseWheel(e) }, { passive: false });
@@ -956,6 +1082,17 @@ export class AXPObj {
         const svg = document.getElementById('axp_canvas_svg_grid');
         svg.setAttribute("viewBox", `-0.5, -0.5, ${width}, ${height}`);
 
+        // 回転表示（ビューポート中心を不動点とする）
+        // transform-originをキャンバス要素ローカルでビュー中心に一致させる
+        const originX = (this.x_size / 2 + this.cameraX) * this.scale / 100;
+        const originY = (this.y_size / 2 + this.cameraY) * this.scale / 100;
+        const transformOrigin = `${originX}px ${originY}px`;
+        const transform = this.rotation ? `rotate(${this.rotation}deg)` : '';
+        this.CANVAS.main.style.transformOrigin = transformOrigin;
+        this.CANVAS.main.style.transform = transform;
+        grid.style.transformOrigin = transformOrigin;
+        grid.style.transform = transform;
+
         this.updateGrid();
 
         // 拡大率数値表示
@@ -968,7 +1105,12 @@ export class AXPObj {
     }
     // 補助線更新
     updateGrid() {
-        const gridRect = document.getElementById('axp_canvas_div_grid').getBoundingClientRect();
+        // 回転表示中はgetBoundingClientRectが外接矩形を返し格子セルが歪むため、
+        // 非回転の表示サイズ（拡大率適用後）を用いる。
+        const gridRect = {
+            width: Math.round(this.x_size * this.scale / 100),
+            height: Math.round(this.y_size * this.scale / 100),
+        };
         const svg = document.getElementById('axp_canvas_svg_grid');
 
         // 作成済み補助線の消去
@@ -1130,6 +1272,79 @@ export class AXPObj {
         // カメラ座標（キャンバス表示位置）を中央にリセット
         this.cameraX = 0;
         this.cameraY = 0;
+        // 回転表示もリセット
+        this.rotation = 0;
+    }
+    /**
+     * 表示の回転角度を相対的に変更する（あくまで表示の回転であり画像編集ではない）
+     * @param {Number} delta 変化量（度数）
+     */
+    rotateView(delta) {
+        this.rotation = ((this.rotation + delta) % 360 + 360) % 360;
+        this.refreshCanvas();
+    }
+    /**
+     * 45度グリッドにスナップする回転（左右回転ボタン用）
+     * @param {Number} direction +1 で右回転（時計回り）、-1 で左回転（反時計回り）
+     */
+    rotateView45(direction) {
+        const a = this.rotation;
+        let result;
+        if (direction > 0) {
+            result = Math.floor((a + 45) / 45) * 45;
+        } else {
+            result = Math.ceil((a - 45) / 45) * 45;
+        }
+        this.rotation = ((result % 360) + 360) % 360;
+        this.refreshCanvas();
+    }
+    /**
+     * 回転ジェスチャの角度変化を、0/90/180/270°の「角速度の壁」スナップを掛けて適用する。
+     * ゆっくりした回転は壁を越えられずその90°に落ち着き、速い回転は壁を突破する。
+     * @param {Number} deltaDeg 今回フレームの角度変化（度）
+     * @param {Number} dt 前回フレームからの経過時間（ミリ秒）
+     */
+    applyRotationDelta(deltaDeg, dt) {
+        if (!deltaDeg) { return; }
+        const a0 = this.rotation;
+        const candidate = a0 + deltaDeg;
+        // 角速度（度/ミリ秒）
+        const velocity = Math.abs(deltaDeg) / Math.max(dt, 1);
+        const fast = velocity >= this.CONST.ROTATE_WALL_VELOCITY;
+        const normalize = (x) => ((x % 360) + 360) % 360;
+        // 最寄りの90°境界
+        const nearest = Math.round(a0 / 90) * 90;
+        let result;
+        if (Math.abs(a0 - nearest) < 0.5) {
+            // ちょうど境界上にいる：脱出には角速度が必要（低速なら留まる）
+            result = fast ? candidate : nearest;
+        } else {
+            // 象限内：進行方向側の境界を跨ぐか判定
+            const boundary = (deltaDeg > 0) ? Math.ceil(a0 / 90) * 90 : Math.floor(a0 / 90) * 90;
+            const crossing = (deltaDeg > 0) ? (candidate >= boundary) : (candidate <= boundary);
+            if (crossing && !fast) {
+                // 低速で境界に到達：壁で停止
+                result = boundary;
+            } else {
+                // 高速で突破、または境界に達しない象限内移動
+                result = candidate;
+            }
+        }
+        this.rotation = normalize(result);
+        this.refreshCanvas();
+    }
+    /**
+     * 回転操作子（PC/タブレット用）の表示／非表示を現在のペンモードに合わせて更新する
+     */
+    updateRotateHandle() {
+        const group = document.getElementById('axp_canvas_div_rotateGroup');
+        const mode = this.penSystem.getPenMode();
+        if (!group) { return; }
+        if (mode === 'axp_penmode_hand') {
+            UTIL.show(group);
+        } else {
+            UTIL.hide(group);
+        }
     }
     /**
      * ポインタイベントを受け取り、入力の実座標からscale(尺度)を適用したキャンバス上のx,y座標を計算し、返却する
@@ -1137,12 +1352,20 @@ export class AXPObj {
      * @returns {{x:Number,y:Number}} 座標(x,y)
      */
     calcScaleCoordinates(e) {
-        let clientRect_draw = this.CANVAS.main.getBoundingClientRect();
-        let calcX = Math.floor((e.clientX - clientRect_draw.left) * 100 / this.scale);
-        let calcY = Math.floor((e.clientY - clientRect_draw.top) * 100 / this.scale);
+        // 回転表示に対応するため、キャンバス要素のgetBoundingClientRect（回転時は外接矩形になりズレる）に
+        // 依存せず、非回転の表示エリア(view)中心を不動点として状態から逆算する。
+        const rectView = this.ELEMENT.view.getBoundingClientRect();
+        // ビューポート中心（回転のピボット）
+        const vx = rectView.left + rectView.width / 2;
+        const vy = rectView.top + rectView.height / 2;
+        // ポインタのビュー中心からの相対ベクトルを -rotation だけ回し、非回転状態の座標系に戻す
+        const r = rotateVector(e.clientX - vx, e.clientY - vy, -this.rotation * Math.PI / 180);
+        // 非回転状態でのキャンバス左上からの表示px距離
+        const localX = r.x + (this.x_size / 2 + this.cameraX) * this.scale / 100;
+        const localY = r.y + (this.y_size / 2 + this.cameraY) * this.scale / 100;
         return {
-            x: calcX,
-            y: calcY,
+            x: Math.floor(localX * 100 / this.scale),
+            y: Math.floor(localY * 100 / this.scale),
         };
     }
     /**
@@ -1208,14 +1431,13 @@ export class AXPObj {
         // ポインタ位置を拡大（カメラ位置調整）
         const adjustCamera = () => {
             if (this.scale !== currentScale) {
-                // 表示エリアの中央座標
+                // 表示エリア（ビューポート）中心：回転の不動点
                 const rectView = this.ELEMENT.view.getBoundingClientRect();
-                const centerX = rectView.width / 2;
-                const centerY = rectView.height / 2;
+                const vx = rectView.left + rectView.width / 2;
+                const vy = rectView.top + rectView.height / 2;
 
-                // ポインタ座標が原点からどれだけ離れているか
-                let pointerDX = e.clientX - centerX;
-                let pointerDY = e.clientY - centerY - rectView.top;
+                // ポインタのビュー中心からの相対ベクトルを -rotation だけ回し、非回転座標系に戻す
+                const r = rotateVector(e.clientX - vx, e.clientY - vy, -this.rotation * Math.PI / 180);
 
                 // キャンバス座標が原点からどれだけ離れているか（ポインタがキャンバス外の場合はキャンバス内に補正）
                 let canvasX = adjustInRange(pos.x, 0, this.x_size - 1);
@@ -1223,13 +1445,9 @@ export class AXPObj {
                 let canvasY = adjustInRange(pos.y, 0, this.y_size - 1);
                 let canvasDY = (canvasY - this.y_size / 2) * this.scale / 100;
 
-                // 新しいカメラ位置
-                let cameraX = (canvasDX - pointerDX) * 100 / this.scale;
-                let cameraY = (canvasDY - pointerDY) * 100 / this.scale;
-                this.cameraX = cameraX;
-                this.cameraY = cameraY;
-                //console.log('cameraX:', pointerDX, canvasDX, cameraX);
-                //console.log('cameraY:', pointerDY, canvasDY, cameraY);
+                // 拡大後もポインタ下のキャンバス画素が同じ画面位置に残るようカメラ位置を求める
+                this.cameraX = (canvasDX - r.x) * 100 / this.scale;
+                this.cameraY = (canvasDY - r.y) * 100 / this.scale;
             }
         };
         switch (this.config('axp_config_form_mouseWheelRotate')) {
@@ -1518,6 +1736,29 @@ export class AXPObj {
             // 拡大率とキャンバスの位置をリセットしました。
             this.msg('@INF0002');
             this.refreshCanvas();
+        }
+
+        // 表示回転
+        this.TASK['func_rotate_view_left'] = () => {
+            this.rotateView(-15);
+            this.msg('@INF5000');
+        }
+        this.TASK['func_rotate_view_right'] = () => {
+            this.rotateView(15);
+            this.msg('@INF5001');
+        }
+        this.TASK['func_rotate_view_left_45'] = () => {
+            this.rotateView45(-1);
+            this.msg('@INF5002');
+        }
+        this.TASK['func_rotate_view_right_45'] = () => {
+            this.rotateView45(+1);
+            this.msg('@INF5003');
+        }
+        this.TASK['func_rotate_view_reset'] = () => {
+            this.rotation = 0;
+            this.refreshCanvas();
+            this.msg('@INF5004');
         }
 
         // ペンツール選択

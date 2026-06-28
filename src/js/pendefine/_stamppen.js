@@ -15,6 +15,7 @@ export class StampPenBase extends DrawingPenBase {
         // ピクセル単位の調節パラメータ (ペンごとに override 可)
         this.startRawPx = 2;   // 開幕この距離まで筆圧フィルタを素通し
         this.subPxFloor = 0.5; // サブピクセル幅の形状下限
+        this._activeRadiusXform = null; // _drawPointSequence 内で一時設定される半径変換
         this.useSubPxAlpha = true; // 極細時に半透明化 (false = 常に不透明)
         // 終端ハライ/ハネ (速度依存・筆圧テーパー)。筆圧ペンのみ有効。具体ペンで上書き可。
         this.flickTaper = {
@@ -49,10 +50,7 @@ export class StampPenBase extends DrawingPenBase {
 
         if (this.drawmode === this.axpObj.CONST.DRAW_FREEHAND && !this.axpObj.isLine) {
             const commits = this.pipeline.onStart(this._toInput(x, y, e));
-            for (const cp of commits) {
-                this._drawStamp(cp);
-                this.lastCommitted = cp;
-            }
+            this.lastCommitted = this._drawCommits(commits, null);
         }
     }
 
@@ -65,10 +63,7 @@ export class StampPenBase extends DrawingPenBase {
         if (this.drawmode === this.axpObj.CONST.DRAW_FREEHAND && !this.axpObj.isLine) {
             // FREEHAND: 累積描画 (ブラシキャンバスは clear せず、新しい区間のみ追加)
             const commits = this.pipeline.onMove(this._toInput(x, y, e), this._gap());
-            for (const cp of commits) {
-                this._drawSegment(this.lastCommitted, cp);
-                this.lastCommitted = cp;
-            }
+            this.lastCommitted = this._drawCommits(commits, this.lastCommitted);
             this.write();
         } else {
             // RECT/CIRCLE/直線モード: 従来通り全体再描画
@@ -84,21 +79,14 @@ export class StampPenBase extends DrawingPenBase {
 
             if (this.drawmode === this.axpObj.CONST.DRAW_FREEHAND && !this.axpObj.isLine) {
                 const commits = this.pipeline.onEnd(this._toInput(x, y, e), this._gap());
-                for (const cp of commits) {
-                    this._drawSegment(this.lastCommitted, cp);
-                    this.lastCommitted = cp;
-                }
+                this.lastCommitted = this._drawCommits(commits, this.lastCommitted);
                 // 終端ハライ/ハネ・テーパー: 既存終端の筆圧を遡って下げる必要があるため、
                 // ブラシキャンバスを clear し、テーパー後の全確定点を再描画する (write が
                 // レイヤー再ロード後にブラシ全体を1回合成するため二重濃化は起きない)。
                 const rebuild = this.pipeline.consumeRebuild();
                 if (rebuild && rebuild.length > 0) {
                     this.CANVAS.brush_ctx.clearRect(0, 0, this.axpObj.x_size, this.axpObj.y_size);
-                    this.lastCommitted = null;
-                    for (const cp of rebuild) {
-                        this._drawSegment(this.lastCommitted, cp);
-                        this.lastCommitted = cp;
-                    }
+                    this.lastCommitted = this._drawCommits(rebuild, null);
                 }
                 // サブピクセル半透明モードの終端キャップ (ストローク中にスタンプを省略しているため)
                 if (this.useSubPxAlpha && this.lastCommitted) {
@@ -139,10 +127,12 @@ export class StampPenBase extends DrawingPenBase {
     }
 
     // 描画半径: usePressure のとき筆圧に比例、それ以外は固定半幅。
+    // _activeRadiusXform が設定されている場合、算出後の半径に変換を適用する。
     _radiusAt(cp) {
         const half = this._halfWidth();
-        // 筆圧をそのまま半径に乗算 (下限なし → curve の不感地帯と終端テーパが機能)
-        return this.usePressure ? half * cp.pressure : half;
+        let r = this.usePressure ? half * cp.pressure : half;
+        if (this._activeRadiusXform) r = this._activeRadiusXform(r);
+        return r;
     }
 
     // サブピクセル幅 (直径 < 1px) のエミュレーション:
@@ -151,6 +141,33 @@ export class StampPenBase extends DrawingPenBase {
         if (!this.useSubPxAlpha) return 1.0;
         const f = this.subPxFloor;
         return (rTrue < f) ? Math.max(0, rTrue) / f : 1.0;
+    }
+
+    // 点群描画 (関数F): alphaScale で brush_ctx の不透明度を制御し、
+    // radiusXform が渡された場合は _radiusAt の出力を変換する。
+    _drawPointSequence(points, alphaScale, prevPoint, radiusXform = null) {
+        if (points.length === 0) return prevPoint;
+        const ctx = this.CANVAS.brush_ctx;
+        const savedAlpha = ctx.globalAlpha;
+        const savedXform = this._activeRadiusXform;
+        ctx.globalAlpha = alphaScale;
+        this._activeRadiusXform = radiusXform;
+        try {
+            let last = prevPoint;
+            for (const cp of points) {
+                this._drawSegment(last, cp);
+                last = cp;
+            }
+            return last;
+        } finally {
+            ctx.globalAlpha = savedAlpha;
+            this._activeRadiusXform = savedXform;
+        }
+    }
+
+    // 確定点群の描画フック。既定は単一パス。ペン側で override して二重描画等を実現する。
+    _drawCommits(commits, prevPoint) {
+        return this._drawPointSequence(commits, 1.0, prevPoint);
     }
 
     // 円スタンプ (既定ニブ)

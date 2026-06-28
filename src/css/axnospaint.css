@@ -218,6 +218,34 @@ body {
   z-index: 800;
 }
 
+/* 回転操作子グループ（ハンドツール時に上部中央へ表示） */
+#axp_canvas_div_rotateGroup {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3000;
+  display: flex;
+  gap: 4px;
+}
+
+#axp_canvas_div_rotateGroup > .axpc_overlay_knob,
+#axp_canvas_div_rotateGroup > .axpc_overlay_btn {
+  position: static;
+}
+
+#axp_canvas_div_rotateLeft {
+  background-image: url('../../resource/overlay/rotate_left.svg');
+}
+
+#axp_canvas_div_rotateHandle {
+  background-image: url('../../resource/overlay/rotate.svg');
+}
+
+#axp_canvas_div_rotateRight {
+  background-image: url('../../resource/overlay/rotate_right.svg');
+}
+
 /* デバッグ情報 */
 #axp_canvas_div_debugInfo {
   position: absolute;

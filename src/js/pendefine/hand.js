@@ -1,6 +1,7 @@
 // @description ペン定義：親クラス＞ハンドツール
 
 import { PenObj } from './_penobj.js';
+import { rotateVector } from '../etc.js';
 
 // ハンド
 export class Hand extends PenObj {
@@ -34,8 +35,10 @@ export class Hand extends PenObj {
             // カメラ位置移動
             const diffX = this.baseInputX - e.clientX;
             const diffY = this.baseInputY - e.clientY;
-            this.axpObj.cameraX = Math.round(this.baseCameraX + (diffX * 100 / this.axpObj.scale));
-            this.axpObj.cameraY = Math.round(this.baseCameraY + (diffY * 100 / this.axpObj.scale));
+            // 画面上のドラッグ差分を -rotation だけ回し、カメラ（非回転）座標系へ変換
+            const r = rotateVector(diffX, diffY, -this.axpObj.rotation * Math.PI / 180);
+            this.axpObj.cameraX = Math.round(this.baseCameraX + (r.x * 100 / this.axpObj.scale));
+            this.axpObj.cameraY = Math.round(this.baseCameraY + (r.y * 100 / this.axpObj.scale));
             this.axpObj.refreshCanvas();
         }
     }

@@ -1,8 +1,8 @@
 /* 共通クラス */
 
-/* 要素非表示 */
+/* 要素非表示（IDセレクタのdisplay指定より優先させるため!important） */
 .axpc_NONE {
-    display: none;
+    display: none !important;
 }
 
 /* 要素非表示（レイアウト変更なし） */
@@ -76,4 +76,41 @@
     border-width: 2px;
     border-style: solid;
     border-color: #aaa;
+}
+
+/* オーバーレイ操作子共通（キャンバス上に浮かぶUI部品） */
+.axpc_overlay_knob,
+.axpc_overlay_btn {
+    position: absolute;
+    width: 40px;
+    height: 40px;
+    z-index: 3000;
+    border-radius: 8px;
+    background-color: var(--axp-knob-bg, rgba(85, 85, 85, 0.85));
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 26px 26px;
+    touch-action: none;
+    user-select: none;
+}
+
+/* オーバーレイノブ（ドラッグ操作用） */
+.axpc_overlay_knob {
+    border: 3px solid var(--axp-knob-border, #eee);
+    cursor: grab;
+}
+
+.axpc_overlay_knob:active {
+    cursor: all-scroll;
+    background-color: rgba(0, 0, 0, 0.85);
+}
+
+/* オーバーレイボタン（タップ操作用） */
+.axpc_overlay_btn {
+    border: 2px solid var(--axp-btn-border, #ccc);
+    cursor: pointer;
+}
+
+.axpc_overlay_btn:active {
+    background-color: rgba(0, 0, 0, 0.85);
 }

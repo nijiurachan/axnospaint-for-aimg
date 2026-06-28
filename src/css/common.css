@@ -98,3 +98,12 @@
 .axpc_overlay_knob:active {
     cursor: grabbing;
 }
+
+/* タップ専用のオーバーレイ操作子（ドラッグしない） */
+.axpc_overlay_knob_tap {
+    cursor: pointer;
+}
+
+.axpc_overlay_knob_tap:active {
+    cursor: pointer;
+}

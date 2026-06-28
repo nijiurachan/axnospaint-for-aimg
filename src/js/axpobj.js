@@ -909,7 +909,7 @@ export class AXPObj {
             removeEvent(e);
         });
 
-        // 回転操作子（PC/タブレット）：押して左右ドラッグで回転
+        // 回転操作子（PC/タブレット）：中央＝押して左右ドラッグで回転、左右＝タップで45度回転
         const rotateHandle = document.getElementById('axp_canvas_div_rotateHandle');
         if (rotateHandle) {
             rotateHandle.addEventListener('pointerdown', (e) => {
@@ -931,6 +931,28 @@ export class AXPObj {
                 };
                 window.addEventListener('pointermove', onMove);
                 window.addEventListener('pointerup', onUp);
+            });
+        }
+
+        const rotateLeft = document.getElementById('axp_canvas_div_rotateLeft');
+        if (rotateLeft) {
+            rotateLeft.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            });
+            rotateLeft.addEventListener('click', () => {
+                this.rotateView45(-1);
+            });
+        }
+
+        const rotateRight = document.getElementById('axp_canvas_div_rotateRight');
+        if (rotateRight) {
+            rotateRight.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            });
+            rotateRight.addEventListener('click', () => {
+                this.rotateView45(+1);
             });
         }
 
@@ -1258,6 +1280,21 @@ export class AXPObj {
         this.refreshCanvas();
     }
     /**
+     * 45度グリッドにスナップする回転（左右回転ボタン用）
+     * @param {Number} direction +1 で右回転（時計回り）、-1 で左回転（反時計回り）
+     */
+    rotateView45(direction) {
+        const a = this.rotation;
+        let result;
+        if (direction > 0) {
+            result = Math.floor((a + 45) / 45) * 45;
+        } else {
+            result = Math.ceil((a - 45) / 45) * 45;
+        }
+        this.rotation = ((result % 360) + 360) % 360;
+        this.refreshCanvas();
+    }
+    /**
      * 回転ジェスチャの角度変化を、0/90/180/270°の「角速度の壁」スナップを掛けて適用する。
      * ゆっくりした回転は壁を越えられずその90°に落ち着き、速い回転は壁を突破する。
      * @param {Number} deltaDeg 今回フレームの角度変化（度）
@@ -1296,15 +1333,13 @@ export class AXPObj {
      * 回転操作子（PC/タブレット用）の表示／非表示を現在のペンモードに合わせて更新する
      */
     updateRotateHandle() {
-        const handle = document.getElementById('axp_canvas_div_rotateHandle');
+        const group = document.getElementById('axp_canvas_div_rotateGroup');
         const mode = this.penSystem.getPenMode();
-        console.log('[RotateHandle] handle=', handle, 'mode=', mode);
-        if (!handle) { return; }
+        if (!group) { return; }
         if (mode === 'axp_penmode_hand') {
-            UTIL.show(handle);
-            console.log('[RotateHandle] SHOW');
+            UTIL.show(group);
         } else {
-            UTIL.hide(handle);
+            UTIL.hide(group);
         }
     }
     /**
@@ -1699,12 +1734,22 @@ export class AXPObj {
             this.refreshCanvas();
         }
 
-        // 表示回転（動作確認用の暫定割当。後続でジェスチャ/回転アイコンUIに置換する）
+        // 表示回転
         this.TASK['func_rotate_view_left'] = () => {
             this.rotateView(-15);
         }
         this.TASK['func_rotate_view_right'] = () => {
             this.rotateView(15);
+        }
+        this.TASK['func_rotate_view_left_45'] = () => {
+            this.rotateView45(-1);
+        }
+        this.TASK['func_rotate_view_right_45'] = () => {
+            this.rotateView45(+1);
+        }
+        this.TASK['func_rotate_view_reset'] = () => {
+            this.rotation = 0;
+            this.refreshCanvas();
         }
 
         // ペンツール選択

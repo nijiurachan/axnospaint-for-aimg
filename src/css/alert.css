@@ -71,3 +71,17 @@
     text-decoration: none;
     outline: 0 !important;
 }
+
+#axp_alert_div_alertBox .axpc_alert_button_select {
+    margin: 10px auto 10px auto;
+    padding: 7px;
+    border: 0 none;
+    min-width: 100px;
+    text-align: center;
+    color: #FFF;
+    background-color: #555;
+    border-radius: 0px;
+    text-decoration: none;
+    outline: 0 !important;
+    cursor: pointer;
+}

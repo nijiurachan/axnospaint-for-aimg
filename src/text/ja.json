@@ -132,5 +132,20 @@
     "@POST.NOTICE1": "投稿時にすべてのレイヤーが統合されます。",
     "@POST.NOTICE2": "",
     "@POST.NOTICE3": "",
-    "@POST.NOTICE4": ""
+    "@POST.NOTICE4": "",
+    "@POST.ODAI.SETTINGS": "お題絵設定",
+    "@POST.ODAI.DEFAULT_TITLE": "寝る前に描きなさい",
+    "@POST.ODAI.DEFAULT_BANNER": "もう何でもいいや適当で",
+    "@POST.ODAI.DEFAULT_CORNER": "zzz",
+    "@POST.ODAI.TITLE": "上のテキスト",
+    "@POST.ODAI.BANNER": "お題（黒帯）",
+    "@POST.ODAI.CORNER": "右下のテキスト",
+    "@POST.ODAI.CROP_SIZE": "切り取りサイズ",
+    "@POST.ODAI.CROP_X": "切り取り横位置",
+    "@POST.ODAI.CROP_Y": "切り取り縦位置",
+    "@POST.ODAI.COPY": "枠なし画像をコピー",
+    "@POST.ODAI.DOWNLOAD": "枠なし画像をダウンロード",
+    "@POST.ODAI.FRAMED": "お題枠込み",
+    "@POST.ODAI.INFO_COPIED": "枠なし画像をクリップボードにコピーしました。",
+    "@POST.ODAI.INFO_COPY_FAILED": "クリップボードへのコピーに失敗しました。"
 }

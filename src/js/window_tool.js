@@ -327,6 +327,12 @@ export class AssistToolSystem extends ToolWindow {
         this.axpObj.msg('@INF1004', msgtext);
     }
     transparent() {
+        // お題絵モードでは白地固定のため切替不可（ボタン・ショートカット・カスタムボタン共通の入口）
+        if (this.axpObj.odaiMode) {
+            // お題絵モードでは背景は白地固定です。
+            this.axpObj.msg('@CAU1005');
+            return;
+        }
         this.isTransparent = !this.isTransparent;
         document.getElementById('axp_tool_button_transparent').dataset.selected = this.isTransparent ? 'true' : 'false';
         this.axpObj.layerSystem.draw();
@@ -349,6 +355,10 @@ export class AssistToolSystem extends ToolWindow {
         return this.isTransparent;
     }
     setIsTransparent(flag) {
+        // お題絵モードでは白地固定（一時保存データの復元などで透過状態を引き継がない）
+        if (this.axpObj.odaiMode) {
+            flag = false;
+        }
         this.isTransparent = flag;
         // 補助ツールのボタン
         document.getElementById('axp_tool_button_transparent').dataset.selected = this.isTransparent ? 'true' : 'false';

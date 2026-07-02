@@ -78,7 +78,8 @@ export class SaveSystem {
                 draftImageFile: this.axpObj.draftImageFile,
                 oekaki_bbs_pageno: this.axpObj.oekaki_bbs_pageno,
                 oekaki_bbs_title: this.axpObj.oekaki_bbs_title,
-                transparent: this.axpObj.assistToolSystem.getIsTransparent()
+                transparent: this.axpObj.assistToolSystem.getIsTransparent(),
+                odaiMode: this.axpObj.odaiMode
             };
             // 指定のデータをDBへ書き込む
             try {
@@ -220,7 +221,8 @@ export class SaveSystem {
                         draftImageFile: this.axpObj.draftImageFile,
                         oekaki_bbs_pageno: this.axpObj.oekaki_bbs_pageno,
                         oekaki_bbs_title: this.axpObj.oekaki_bbs_title,
-                        transparent: this.axpObj.assistToolSystem.getIsTransparent()
+                        transparent: this.axpObj.assistToolSystem.getIsTransparent(),
+                        odaiMode: this.axpObj.odaiMode
                     };
 
                     (async () => {
@@ -371,6 +373,13 @@ export class SaveSystem {
     }
     // レイヤーオブジェクトから画面を復元する
     restoreData(obj) {
+        // お題絵モードの有無の情報が含まれていれば復元
+        // （キャンバス初期化と透過復元がモードに依存するため、必ず先に復元する）
+        if (typeof obj.odaiMode !== 'undefined') {
+            this.axpObj.odaiMode = obj.odaiMode;
+        } else {
+            this.axpObj.odaiMode = false;
+        }
         // キャンバスサイズ再設定
         this.axpObj.x_size = obj.x_max;
         this.axpObj.y_size = obj.y_max;

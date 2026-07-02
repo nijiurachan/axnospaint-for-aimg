@@ -17,6 +17,7 @@ import { PostSystem } from './post.js';
 import { SaveSystem } from './saveload.js';
 import { KeyboardSystem } from './keyboard.js';
 import { UTIL, loadImageWithTimeout, calcDistance, adjustInRange, getFileNameFromURL, rotateVector, normalizeDeg180 } from './etc.js';
+import { selectExPromise } from './alert.js';
 import { Message } from './message.js';
 import { DebugLog } from './debuglog.js';
 
@@ -164,6 +165,11 @@ export class AXPObj {
     // 現在のキャンバスサイズ
     x_size;
     y_size;
+
+    // お題絵モード（起動時のモード選択で確定。投稿時に絵から正方形を切り取り、お題枠に合成して投稿する）
+    odaiMode = false;
+    // お題絵モード選択ダイアログの有効化（起動オプションで無効化可能）
+    enableOdaiMode = true;
 
     // 画像の縦横サイズが異なる時のサムネイルのセンタリング用
     ctx_map_shift_x;
@@ -1525,6 +1531,15 @@ export class AXPObj {
     }
     // 投稿タブのキャンバスの描画（ブラウザタブ切り替え時の再描画にも使用する）
     drawPostCanvas() {
+        // お題絵モード：お題枠に合成した画像を投稿キャンバスに描画
+        if (this.odaiMode) {
+            this.postSystem.drawOdaiPostCanvas();
+            return;
+        }
+        // 投稿キャンバスのサイズが一致していない場合の保険（お題絵モードの一時保存データからの復元直後など）
+        if (this.postSystem.CANVAS.post.width !== this.x_size || this.postSystem.CANVAS.post.height !== this.y_size) {
+            this.postSystem.resetCanvas();
+        }
         let isTrans = this.assistToolSystem.getIsTransparent();
         if (isTrans) {
             // 画像
@@ -2348,6 +2363,18 @@ export class AXPObj {
                 }
                 if (this.oekaki_height) {
                     this.y_size = Number(this.oekaki_height);
+                }
+            }
+
+            // モード選択（新規描画時のみ。下書き読込時は通常モード固定、起動オプションで無効化可能）
+            if (!isDraftLoaded && this.enableOdaiMode) {
+                const selected = await selectExPromise(
+                    '作成するキャンバスを選んでください。\n\n【お絵カキコ】通常のお絵カキコです\n【お題絵】投稿時に、絵から正方形を切り取ってお題枠に収めて投稿します',
+                    ['お絵カキコ', 'お題絵']
+                );
+                if (selected === 1) {
+                    // お題絵モード
+                    this.odaiMode = true;
                 }
             }
 

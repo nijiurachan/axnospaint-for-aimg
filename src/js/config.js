@@ -501,6 +501,7 @@ export class ConfigSystem {
                         counter: this.axpObj.layerSystem.layer_counter,
                         layer: copy_layerOBJ,
                         transparent: this.axpObj.assistToolSystem.getIsTransparent(),
+                        odaiMode: this.axpObj.odaiMode,
                     }
                     // 復元処理
                     this.axpObj.saveSystem.restoreData(data);

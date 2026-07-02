@@ -421,3 +421,41 @@
         background: linear-gradient(90deg, transparent, #aaa, transparent)
     }
 }
+/* お題絵設定 */
+#axp_post_div_odai {
+    width: 100%;
+    max-width: 1024px;
+    padding: 10px;
+    border-radius: 20px;
+    background-color: #dedede;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.axpc_post_odai_input {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 6px 10px;
+    align-items: center;
+}
+
+.axpc_post_odai_input input {
+    max-width: 400px;
+    font-size: 16px;
+}
+
+#axp_post_div_odaiCrop input[type="range"] {
+    width: 100%;
+    max-width: 400px;
+}
+
+#axp_post_div_odaiCrop input[type="range"]:disabled {
+    opacity: 0.35;
+}
+
+.axpc_post_odai_buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}

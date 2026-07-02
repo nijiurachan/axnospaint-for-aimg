@@ -66,6 +66,32 @@
             </div>
         </div>
     </div>
+    <!-- お題絵設定 -->
+    <div id="axp_post_div_odai" class="axpc_NONE">
+        <u>${_("@POST.ODAI.SETTINGS")}</u>
+        <div class="axpc_post_odai_input">
+            <div>${_("@POST.ODAI.TITLE")}</div>
+            <input id="axp_post_text_odaiTitle" type="text" spellcheck="false" maxlength="100" />
+            <div>${_("@POST.ODAI.BANNER")}</div>
+            <input id="axp_post_text_odaiBanner" type="text" spellcheck="false" maxlength="100" />
+            <div>${_("@POST.ODAI.CORNER")}</div>
+            <input id="axp_post_text_odaiCorner" type="text" spellcheck="false" maxlength="50" />
+        </div>
+        <div id="axp_post_div_odaiCrop" class="axpc_MSG axpc_post_odai_input" data-msg="@POS0002">
+            <div>${_("@POST.ODAI.CROP_SIZE")}</div>
+            <input id="axp_post_range_odaiCropSize" type="range" min="10" max="100" value="100" />
+            <div>${_("@POST.ODAI.CROP_X")}</div>
+            <input id="axp_post_range_odaiCropX" type="range" min="0" max="100" value="50" />
+            <div>${_("@POST.ODAI.CROP_Y")}</div>
+            <input id="axp_post_range_odaiCropY" type="range" min="0" max="100" value="50" />
+        </div>
+        <div class="axpc_post_odai_buttons">
+            <button id="axp_post_button_odaiCopy" class="axpc_MSG axpc_button" data-msg="@POS0003">
+                ${_("@POST.ODAI.COPY")}</button>
+            <button id="axp_post_button_odaiDownload" class="axpc_MSG axpc_button" data-msg="@POS0004">
+                ${_("@POST.ODAI.DOWNLOAD")}</button>
+        </div>
+    </div>
     <!-- 注意事項 -->
     <div id="axp_post_div_notice">
         <u>${_("@POST.NOTICE")}</u>

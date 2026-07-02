@@ -76,6 +76,44 @@ export function confirmExPromise(message) {
     });
 }
 
+// 選択ダイアログ（複数の選択肢から1つを選択するまで待機する。選択されたindexでresolveする）
+export function selectExPromise(message, labels) {
+    return new Promise(function (resolve) {
+        const show = function () {
+            // 既に別のモーダル（アラート等）が表示中の場合、閉じられるのを待ってから表示する
+            // （Promiseを未解決のまま放置すると呼び出し元のawaitが恒久停止するため）
+            if (document.getElementById("axp_alert_div_modalContainer")) {
+                setTimeout(show, 200);
+                return;
+            }
+            let mObj = document.getElementsByTagName("body")[0].appendChild(document.createElement("div"));
+            mObj.id = "axp_alert_div_modalContainer";
+
+            let alertObj = mObj.appendChild(document.createElement("div"));
+            alertObj.id = "axp_alert_div_alertBox";
+            alertObj.style.visibility = "visible";
+
+            let h1 = alertObj.appendChild(document.createElement("h1"));
+            h1.appendChild(document.createTextNode(ALERT_TITLE));
+
+            let messagetext = alertObj.appendChild(document.createElement("p"));
+            messagetext.innerText = message;
+
+            let div1 = alertObj.appendChild(document.createElement("div"));
+            div1.style.display = 'flex';
+
+            for (let i = 0; i < labels.length; i++) {
+                let btn = div1.appendChild(document.createElement("button"));
+                btn.className = "axpc_alert_button_select";
+                btn.appendChild(document.createTextNode(labels[i]));
+                btn.onclick = function () { removeCustomAlert(); resolve(i); }
+            }
+            alertObj.style.display = "block";
+        };
+        show();
+    });
+}
+
 // 確認ダイアログ（OK）（Promiseで処理を待機してくれる版）
 export function alertExPromise(message) {
     var _showConfirmDialog = function (message, okFunction) {

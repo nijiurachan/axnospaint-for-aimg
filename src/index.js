@@ -137,6 +137,9 @@ export default class {
             // 投稿制限
             this.axpObj.restrictPost = option.restrictPost || false;
 
+            // お題絵モード選択ダイアログの有効化（既定:有効。falseを明示指定した場合のみ無効）
+            this.axpObj.enableOdaiMode = option.enableOdaiMode !== false;
+
             // 拡張機能タブ
             this.axpObj.expansionTab = option.expansionTab || null;
 

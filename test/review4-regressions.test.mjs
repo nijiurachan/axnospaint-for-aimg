@@ -150,6 +150,12 @@ test('forced autosave writes only when dirty or explicitly requested', async () 
   assert.equal(writes.length, 1);
 });
 
+test('npm test passes the test glob directly to the Node test runner', () => {
+  const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+
+  assert.equal(packageJson.scripts.test, 'node --test "test/*.test.mjs"');
+});
+
 test('liquify overlay buttons support keyboard click activation', () => {
   const source = readFileSync(new URL('../src/js/pendefine/liquify.js', import.meta.url), 'utf8');
   const match = source.match(/setupOverlayEvents\(\) \{(?<body>[\s\S]*?)\n {2}\}\n\n {2}showOverlay/);

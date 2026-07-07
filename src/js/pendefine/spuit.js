@@ -3,6 +3,62 @@
 import { PenObj } from './_penobj.js';
 import { inRange } from '../etc.js';
 
+export const SPUIT_SAMPLE_MODE = {
+    COMPOSITED: 'option_all',
+    LAYER: 'option_layer',
+};
+
+export function normalizeSpuitSampleMode(mode) {
+    return mode === SPUIT_SAMPLE_MODE.LAYER
+        ? SPUIT_SAMPLE_MODE.LAYER
+        : SPUIT_SAMPLE_MODE.COMPOSITED;
+}
+
+export function getSpuitSampleImageData(axpObj, x, y, mode = SPUIT_SAMPLE_MODE.COMPOSITED) {
+    if (normalizeSpuitSampleMode(mode) !== SPUIT_SAMPLE_MODE.LAYER) {
+        return axpObj.CANVAS.main_ctx.getImageData(x, y, 1, 1);
+    }
+
+    const imageData = axpObj.layerSystem.getImage();
+    const width = imageData.width || axpObj.x_size;
+    const height = imageData.height || axpObj.y_size;
+    const ix = Math.floor(x);
+    const iy = Math.floor(y);
+    if (ix < 0 || iy < 0 || ix >= width || iy >= height) {
+        return { data: new Uint8ClampedArray([0, 0, 0, 0]) };
+    }
+    const index = (iy * width + ix) * 4;
+    return {
+        data: imageData.data.slice(index, index + 4),
+    };
+}
+
+export function getSpuitPreviewImageData(axpObj, sx0, sy0, sw, sh) {
+    const source = axpObj.layerSystem.getImage();
+    const sourceWidth = source.width || axpObj.x_size;
+    const sourceHeight = source.height || axpObj.y_size;
+    const preview = new ImageData(sw, sh);
+
+    for (let y = 0; y < sh; y++) {
+        const sourceY = sy0 + y;
+        if (sourceY < 0 || sourceY >= sourceHeight) continue;
+
+        for (let x = 0; x < sw; x++) {
+            const sourceX = sx0 + x;
+            if (sourceX < 0 || sourceX >= sourceWidth) continue;
+
+            const sourceIndex = (sourceY * sourceWidth + sourceX) * 4;
+            const previewIndex = (y * sw + x) * 4;
+            preview.data[previewIndex] = source.data[sourceIndex];
+            preview.data[previewIndex + 1] = source.data[sourceIndex + 1];
+            preview.data[previewIndex + 2] = source.data[sourceIndex + 2];
+            preview.data[previewIndex + 3] = source.data[sourceIndex + 3];
+        }
+    }
+
+    return preview;
+}
+
 // スポイト
 export class Spuit extends PenObj {
     constructor(option) {
@@ -67,14 +123,18 @@ export class Spuit extends PenObj {
             const sw = sx1 - sx0 + 1;
             const sh = sy1 - sy0 + 1;
 
-            // 座標の周囲を読み取る（ポインタ座標がキャンバスをはみ出さない場合、通常は５ドット）
-            const imagedata = this.axpObj.CANVAS.main_ctx.getImageData(sx0, sy0, sw, sh);
-
             // dx,dy:描画先キャンバスに画像データを配置する座標
             const dx = sx0 - (x - 2);
             const dy = sy0 - (y - 2);
             // 拡大イメージをプレビュー表示
-            ctx.putImageData(imagedata, dx, dy);
+            if (this.axpObj.penSystem.getSpuitSampleMode() === SPUIT_SAMPLE_MODE.LAYER) {
+                const previewImageData = getSpuitPreviewImageData(this.axpObj, sx0, sy0, sw, sh);
+                ctx.putImageData(previewImageData, dx, dy);
+            } else {
+                // 座標の周囲を読み取る（ポインタ座標がキャンバスをはみ出さない場合、通常は５ドット）
+                const imagedata = this.axpObj.CANVAS.main_ctx.getImageData(sx0, sy0, sw, sh);
+                ctx.putImageData(imagedata, dx, dy);
+            }
 
             /*
             console.log('x,y:', x, y);
@@ -92,7 +152,12 @@ export class Spuit extends PenObj {
         // キャンバス内なら色情報取得
         if (e.target.id === this.axpObj.CANVAS.main.id) {
             // 座標のドットを読み取る
-            const imagedataSpuitPonit = this.axpObj.CANVAS.main_ctx.getImageData(x, y, 1, 1);
+            const imagedataSpuitPonit = getSpuitSampleImageData(
+                this.axpObj,
+                x,
+                y,
+                this.axpObj.penSystem.getSpuitSampleMode()
+            );
             // RGBAの取得
             r = imagedataSpuitPonit.data[0];
             g = imagedataSpuitPonit.data[1];

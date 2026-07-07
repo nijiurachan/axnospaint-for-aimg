@@ -11,6 +11,7 @@ const STORE_NAME_SAVE_MANUAL = 'save_manual';
 const STORE_NAME_SAVE_AUTO = 'save_auto';
 const STORE_NAME_CONFIG = 'save_config';
 const STORE_NAME_PALETTE = 'save_palette';
+const WET_PALETTE_SAVE_ID = 'wet_palette_01';
 
 // 自動保存の最大スロット数
 const AUTOSAVE_MAX = 20;
@@ -491,6 +492,44 @@ export class SaveSystem {
             return;
         }
     }
+    save_wetPalette(dataUrl) {
+        if (!this.isDBAvailable || typeof dataUrl !== 'string') return false;
+
+        const data = {
+            id: WET_PALETTE_SAVE_ID,
+            dataUrl,
+        };
+        try {
+            this.dbSystem.saveToDB(data, STORE_NAME_CONFIG).catch((error) => {
+                console.log(error);
+            });
+            return true;
+        } catch (error) {
+            console.log(error);
+            return false;
+        }
+    }
+    async load_wetPalette() {
+        if (!this.isDBAvailable) return null;
+
+        try {
+            const result = await this.dbSystem.loadFromDB(WET_PALETTE_SAVE_ID, STORE_NAME_CONFIG);
+            return typeof result.dataUrl === 'string' ? result.dataUrl : null;
+        } catch {
+            return null;
+        }
+    }
+    async delete_wetPalette() {
+        if (!this.isDBAvailable) return false;
+
+        try {
+            await this.dbSystem.deleteFromDB(WET_PALETTE_SAVE_ID, STORE_NAME_CONFIG);
+            return true;
+        } catch (error) {
+            console.log(error);
+            return false;
+        }
+    }
 }
 
 // indexedDB処理系
@@ -633,6 +672,26 @@ class DbSystem {
                 const deleteReq = store.delete(key);
                 deleteReq.onerror = () => {
                     reject(new Error('deleteAutoSave:deleteReq.onerror'));
+                }
+                deleteReq.onsuccess = () => {
+                    resolve();
+                }
+            }
+        });
+    }
+    deleteFromDB(id, storeName) {
+        return new Promise((resolve, reject) => {
+            const openReq = indexedDB.open(DB_NAME, DB_VERSION);
+            openReq.onerror = () => {
+                reject(new Error('deleteFromDB:openReq.onerror'));
+            }
+            openReq.onsuccess = () => {
+                const db = openReq.result;
+                const transaction = db.transaction(storeName, "readwrite");
+                const store = transaction.objectStore(storeName);
+                const deleteReq = store.delete(id);
+                deleteReq.onerror = () => {
+                    reject(new Error('deleteFromDB:deleteReq.onerror'));
                 }
                 deleteReq.onsuccess = () => {
                     resolve();

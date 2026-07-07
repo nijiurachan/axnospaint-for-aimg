@@ -6,7 +6,7 @@ import { UTIL, inRange, getFileNameFromURL } from './etc.js';
 const AUTOSAVE_INTERVAL = 10;
 // indexedDB定義
 const DB_NAME = 'axnospaint_db1';
-const DB_VERSION = 4;
+export const DB_VERSION = 4;
 const STORE_NAME_SAVE_MANUAL = 'save_manual';
 const STORE_NAME_SAVE_MANUAL_THUMBNAIL = 'save_manual_thumbnail';
 const STORE_NAME_SAVE_AUTO = 'save_auto';
@@ -17,19 +17,25 @@ const WET_PALETTE_SAVE_ID = 'wet_palette_01';
 // 自動保存の最大スロット数
 const AUTOSAVE_MAX = 20;
 // マニュアル保存の最大スロット数
-const MANUALSAVE_MAX = 20;
+export const MANUALSAVE_MAX = 20;
 
-function createManualSaveSlotId(index) {
+export function createManualSaveSlotId(index) {
     return `save_${String(index).padStart(2, '0')}`;
 }
 
-function putEmptyManualSaveSlots(store, startIndex = 1) {
+export function putEmptyManualSaveSlots(store, startIndex = 1) {
     for (let index = startIndex; index <= MANUALSAVE_MAX; index++) {
         store.put({ id: createManualSaveSlotId(index) });
     }
 }
 
-function createManualSaveThumbnail(data) {
+export function createManualSaveBody(data) {
+    const body = { ...data };
+    delete body.src;
+    return body;
+}
+
+export function createManualSaveThumbnail(data) {
     const thumbnail = {
         id: data.id
     };
@@ -48,6 +54,17 @@ function createManualSaveThumbnail(data) {
     return thumbnail;
 }
 
+export function splitManualSaveData(data) {
+    return {
+        body: createManualSaveBody(data),
+        thumbnail: createManualSaveThumbnail(data)
+    };
+}
+
+export function getManualSaveSlotMigrationStartIndex(oldVersion) {
+    return oldVersion <= 2 ? 6 : 11;
+}
+
 function migrateManualSaveThumbnails(storeManual, storeManualThumbnail) {
     const readReq = storeManual.openCursor();
     readReq.onsuccess = () => {
@@ -56,11 +73,10 @@ function migrateManualSaveThumbnails(storeManual, storeManualThumbnail) {
             return;
         }
         const value = cursor.value;
-        storeManualThumbnail.put(createManualSaveThumbnail(value));
+        const { body, thumbnail } = splitManualSaveData(value);
+        storeManualThumbnail.put(thumbnail);
         if (value.src !== undefined) {
-            const saveData = { ...value };
-            delete saveData.src;
-            cursor.update(saveData);
+            cursor.update(body);
         }
         cursor.continue();
     };
@@ -269,17 +285,11 @@ export class SaveSystem {
                     // data-keyに記憶しておいた主キーを使用する
                     const save_id = e.currentTarget.dataset.key;
                     const created = new Date();
-                    const thumbnail = createManualSaveThumbnail({
-                        id: save_id,
-                        created: created,
-                        src: this.axpObj.assistToolSystem.CANVAS.thumbnail.toDataURL(),
-                        oekaki_id: this.axpObj.oekaki_id,
-                        draftImageFile: this.axpObj.draftImageFile
-                    });
-                    const data = {
+                    const fullSaveData = {
                         id: save_id,
                         version: this.CONST.DATA_VERSION,
                         created: created,
+                        src: this.axpObj.assistToolSystem.CANVAS.thumbnail.toDataURL(),
                         x_max: this.axpObj.x_size,
                         y_max: this.axpObj.y_size,
                         counter: this.axpObj.layerSystem.layer_counter,
@@ -290,11 +300,12 @@ export class SaveSystem {
                         oekaki_bbs_title: this.axpObj.oekaki_bbs_title,
                         transparent: this.axpObj.assistToolSystem.getIsTransparent()
                     };
+                    const { body, thumbnail } = splitManualSaveData(fullSaveData);
 
                     (async () => {
                         // 指定のデータをDBへ書き込む
                         try {
-                            await this.dbSystem.saveManualToDB(data, thumbnail);
+                            await this.dbSystem.saveManualToDB(body, thumbnail);
                             // スロット%1にセーブしました。
                             this.axpObj.msg('@INF0300', save_id.substr(5));
                         } catch (error) {
@@ -627,7 +638,7 @@ class DbSystem {
                         ? openReq.transaction.objectStore(STORE_NAME_SAVE_MANUAL_THUMBNAIL)
                         : db.createObjectStore(STORE_NAME_SAVE_MANUAL_THUMBNAIL, { keyPath: 'id' });
                     migrateManualSaveThumbnails(storeManual, storeManualThumbnail);
-                    const startIndex = event.oldVersion <= 2 ? 6 : 11;
+                    const startIndex = getManualSaveSlotMigrationStartIndex(event.oldVersion);
                     putEmptyManualSaveSlots(storeManual, startIndex);
                     putEmptyManualSaveSlots(storeManualThumbnail, startIndex);
                 }

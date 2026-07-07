@@ -1,5 +1,5 @@
 /*!
- * AXNOS Paint w/ nijiurachan custom version 3.0.0-alpha (2026-07-07T10:14:47.155Z)
+ * AXNOS Paint w/ nijiurachan custom version 3.0.0-alpha (2026-07-07T10:55:23.550Z)
  * (c) 2026- nijiurachan contributors
  * (c) 2022「悪の巣」部屋番号13番：「趣味の悪い大衆酒場[Mad end dance hall]」
  * Licensed under MPL 2.0
@@ -31846,7 +31846,7 @@ class ConfigSystem {
         let targetElement = document.getElementById('axp_config');
         targetElement.insertAdjacentHTML('afterbegin', this.axpObj.translateHTML(_html_config_txt__WEBPACK_IMPORTED_MODULE_2__));
         // バージョン情報の表示
-        document.getElementById('axp_config_div_versionInfo').textContent = `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-07-07T10:14:47.155Z"})`
+        document.getElementById('axp_config_div_versionInfo').textContent = `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-07-07T10:55:23.550Z"})`
     }
     // HTML展開
     deployHTML() {
@@ -42882,7 +42882,15 @@ var ReinventedColorWheel = (function () {
 
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
-/* harmony export */   SaveSystem: () => (/* binding */ SaveSystem)
+/* harmony export */   DB_VERSION: () => (/* binding */ DB_VERSION),
+/* harmony export */   MANUALSAVE_MAX: () => (/* binding */ MANUALSAVE_MAX),
+/* harmony export */   SaveSystem: () => (/* binding */ SaveSystem),
+/* harmony export */   createManualSaveBody: () => (/* binding */ createManualSaveBody),
+/* harmony export */   createManualSaveSlotId: () => (/* binding */ createManualSaveSlotId),
+/* harmony export */   createManualSaveThumbnail: () => (/* binding */ createManualSaveThumbnail),
+/* harmony export */   getManualSaveSlotMigrationStartIndex: () => (/* binding */ getManualSaveSlotMigrationStartIndex),
+/* harmony export */   putEmptyManualSaveSlots: () => (/* binding */ putEmptyManualSaveSlots),
+/* harmony export */   splitManualSaveData: () => (/* binding */ splitManualSaveData)
 /* harmony export */ });
 /* harmony import */ var _etc_js__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ./etc.js */ "./src/js/etc.js");
 // @description セーブ／ロード／自動保存から復元処理 indexedDB処理系
@@ -42916,6 +42924,12 @@ function putEmptyManualSaveSlots(store, startIndex = 1) {
     }
 }
 
+function createManualSaveBody(data) {
+    const body = { ...data };
+    delete body.src;
+    return body;
+}
+
 function createManualSaveThumbnail(data) {
     const thumbnail = {
         id: data.id
@@ -42935,6 +42949,17 @@ function createManualSaveThumbnail(data) {
     return thumbnail;
 }
 
+function splitManualSaveData(data) {
+    return {
+        body: createManualSaveBody(data),
+        thumbnail: createManualSaveThumbnail(data)
+    };
+}
+
+function getManualSaveSlotMigrationStartIndex(oldVersion) {
+    return oldVersion <= 2 ? 6 : 11;
+}
+
 function migrateManualSaveThumbnails(storeManual, storeManualThumbnail) {
     const readReq = storeManual.openCursor();
     readReq.onsuccess = () => {
@@ -42943,11 +42968,10 @@ function migrateManualSaveThumbnails(storeManual, storeManualThumbnail) {
             return;
         }
         const value = cursor.value;
-        storeManualThumbnail.put(createManualSaveThumbnail(value));
+        const { body, thumbnail } = splitManualSaveData(value);
+        storeManualThumbnail.put(thumbnail);
         if (value.src !== undefined) {
-            const saveData = { ...value };
-            delete saveData.src;
-            cursor.update(saveData);
+            cursor.update(body);
         }
         cursor.continue();
     };
@@ -43156,17 +43180,11 @@ class SaveSystem {
                     // data-keyに記憶しておいた主キーを使用する
                     const save_id = e.currentTarget.dataset.key;
                     const created = new Date();
-                    const thumbnail = createManualSaveThumbnail({
-                        id: save_id,
-                        created: created,
-                        src: this.axpObj.assistToolSystem.CANVAS.thumbnail.toDataURL(),
-                        oekaki_id: this.axpObj.oekaki_id,
-                        draftImageFile: this.axpObj.draftImageFile
-                    });
-                    const data = {
+                    const fullSaveData = {
                         id: save_id,
                         version: this.CONST.DATA_VERSION,
                         created: created,
+                        src: this.axpObj.assistToolSystem.CANVAS.thumbnail.toDataURL(),
                         x_max: this.axpObj.x_size,
                         y_max: this.axpObj.y_size,
                         counter: this.axpObj.layerSystem.layer_counter,
@@ -43177,11 +43195,12 @@ class SaveSystem {
                         oekaki_bbs_title: this.axpObj.oekaki_bbs_title,
                         transparent: this.axpObj.assistToolSystem.getIsTransparent()
                     };
+                    const { body, thumbnail } = splitManualSaveData(fullSaveData);
 
                     (async () => {
                         // 指定のデータをDBへ書き込む
                         try {
-                            await this.dbSystem.saveManualToDB(data, thumbnail);
+                            await this.dbSystem.saveManualToDB(body, thumbnail);
                             // スロット%1にセーブしました。
                             this.axpObj.msg('@INF0300', save_id.substr(5));
                         } catch (error) {
@@ -43514,7 +43533,7 @@ class DbSystem {
                         ? openReq.transaction.objectStore(STORE_NAME_SAVE_MANUAL_THUMBNAIL)
                         : db.createObjectStore(STORE_NAME_SAVE_MANUAL_THUMBNAIL, { keyPath: 'id' });
                     migrateManualSaveThumbnails(storeManual, storeManualThumbnail);
-                    const startIndex = event.oldVersion <= 2 ? 6 : 11;
+                    const startIndex = getManualSaveSlotMigrationStartIndex(event.oldVersion);
                     putEmptyManualSaveSlots(storeManual, startIndex);
                     putEmptyManualSaveSlots(storeManualThumbnail, startIndex);
                 }
@@ -52086,7 +52105,7 @@ __webpack_require__.r(__webpack_exports__);
     axpObj;
     constructor(option) {
         console.log('version:', "3.0.0-alpha");
-        console.log('build:', "2026-07-07T10:14:47.155Z");
+        console.log('build:', "2026-07-07T10:55:23.550Z");
         (async () => {
             // 追加辞書オプションチェック
             let additionalDictionaryJSON = null;
@@ -52467,7 +52486,7 @@ __webpack_require__.r(__webpack_exports__);
     }
     // バージョン
     version() {
-        return `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-07-07T10:14:47.155Z"})`;
+        return `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-07-07T10:55:23.550Z"})`;
     }
     // 画面の表示／非表示
     on() {
@@ -52479,7 +52498,7 @@ __webpack_require__.r(__webpack_exports__);
         this.axpObj.isClose = true;
     }
     static ver() {
-        return `version ${"3.0.0-alpha"} (${"2026-07-07T10:14:47.155Z"})`;
+        return `version ${"3.0.0-alpha"} (${"2026-07-07T10:55:23.550Z"})`;
     }
 });
 

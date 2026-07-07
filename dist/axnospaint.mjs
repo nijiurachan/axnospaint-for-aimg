@@ -1,5 +1,5 @@
 /*!
- * AXNOS Paint w/ nijiurachan custom version 3.0.0-alpha (2026-07-07T10:12:49.364Z)
+ * AXNOS Paint w/ nijiurachan custom version 3.0.0-alpha (2026-07-07T10:14:47.155Z)
  * (c) 2026- nijiurachan contributors
  * (c) 2022「悪の巣」部屋番号13番：「趣味の悪い大衆酒場[Mad end dance hall]」
  * Licensed under MPL 2.0
@@ -31846,7 +31846,7 @@ class ConfigSystem {
         let targetElement = document.getElementById('axp_config');
         targetElement.insertAdjacentHTML('afterbegin', this.axpObj.translateHTML(_html_config_txt__WEBPACK_IMPORTED_MODULE_2__));
         // バージョン情報の表示
-        document.getElementById('axp_config_div_versionInfo').textContent = `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-07-07T10:12:49.364Z"})`
+        document.getElementById('axp_config_div_versionInfo').textContent = `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-07-07T10:14:47.155Z"})`
     }
     // HTML展開
     deployHTML() {
@@ -52086,7 +52086,7 @@ __webpack_require__.r(__webpack_exports__);
     axpObj;
     constructor(option) {
         console.log('version:', "3.0.0-alpha");
-        console.log('build:', "2026-07-07T10:12:49.364Z");
+        console.log('build:', "2026-07-07T10:14:47.155Z");
         (async () => {
             // 追加辞書オプションチェック
             let additionalDictionaryJSON = null;
@@ -52467,7 +52467,7 @@ __webpack_require__.r(__webpack_exports__);
     }
     // バージョン
     version() {
-        return `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-07-07T10:12:49.364Z"})`;
+        return `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-07-07T10:14:47.155Z"})`;
     }
     // 画面の表示／非表示
     on() {
@@ -52479,7 +52479,7 @@ __webpack_require__.r(__webpack_exports__);
         this.axpObj.isClose = true;
     }
     static ver() {
-        return `version ${"3.0.0-alpha"} (${"2026-07-07T10:12:49.364Z"})`;
+        return `version ${"3.0.0-alpha"} (${"2026-07-07T10:14:47.155Z"})`;
     }
 });
 

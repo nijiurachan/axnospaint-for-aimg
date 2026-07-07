@@ -40,6 +40,12 @@ test('colorToAlpha keeps the white unmix mode as the default call behavior', () 
   assert.deepEqual([...result.data], [0, 0, 0, 127]);
 });
 
+test('colorToAlpha uses white as the unmix base when only mode is provided', () => {
+  const result = colorToAlpha(imageData([128, 128, 128, 255]), { mode: 'unmix' });
+
+  assert.deepEqual([...result.data], [0, 0, 0, 127]);
+});
+
 test('colorToAlpha can derive alpha from luminance while replacing visible color', () => {
   const result = colorToAlpha(
     imageData([64, 64, 64, 128, 0, 0, 0, 0]),

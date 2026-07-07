@@ -1,5 +1,5 @@
 /*!
- * AXNOS Paint w/ nijiurachan custom version 3.0.0-alpha (2026-07-07T07:49:22.856Z)
+ * AXNOS Paint w/ nijiurachan custom version 3.0.0-alpha (2026-07-07T08:44:36.747Z)
  * (c) 2026- nijiurachan contributors
  * (c) 2022「悪の巣」部屋番号13番：「趣味の悪い大衆酒場[Mad end dance hall]」
  * Licensed under MPL 2.0
@@ -31332,6 +31332,7 @@ class AXPObj {
                         alert('エラー:ユーザーパレットの読み込みに失敗しました。デフォルト設定で起動します。');
                     }
                 }
+                await this.colorMakerSystem.restoreWetPaletteSnapshot();
             }
             // ユーザー設定の復元が完了した後に行う処理 ------------------------------------------------
 
@@ -31845,7 +31846,7 @@ class ConfigSystem {
         let targetElement = document.getElementById('axp_config');
         targetElement.insertAdjacentHTML('afterbegin', this.axpObj.translateHTML(_html_config_txt__WEBPACK_IMPORTED_MODULE_2__));
         // バージョン情報の表示
-        document.getElementById('axp_config_div_versionInfo').textContent = `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-07-07T07:49:22.856Z"})`
+        document.getElementById('axp_config_div_versionInfo').textContent = `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-07-07T08:44:36.747Z"})`
     }
     // HTML展開
     deployHTML() {
@@ -34706,8 +34707,14 @@ function colorToAlpha(imageData, options = { r: 255, g: 255, b: 255 }) {
     const dst = out.data;
     const mode = options?.mode || 'unmix';
     const replacementColor = options?.replacementColor || null;
+    const legacyBaseColor = options
+        && typeof options.r === 'number'
+        && typeof options.g === 'number'
+        && typeof options.b === 'number'
+        ? options
+        : null;
     const baseColor = mode === 'unmix'
-        ? (options?.baseColor || options)
+        ? (options?.baseColor || legacyBaseColor || { r: 255, g: 255, b: 255 })
         : { r: 255, g: 255, b: 255 };
     const { r: br, g: bg, b: bb } = baseColor;
 
@@ -41235,6 +41242,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
 /* harmony export */   SPUIT_SAMPLE_MODE: () => (/* binding */ SPUIT_SAMPLE_MODE),
 /* harmony export */   Spuit: () => (/* binding */ Spuit),
+/* harmony export */   getSpuitPreviewImageData: () => (/* binding */ getSpuitPreviewImageData),
 /* harmony export */   getSpuitSampleImageData: () => (/* binding */ getSpuitSampleImageData),
 /* harmony export */   normalizeSpuitSampleMode: () => (/* binding */ normalizeSpuitSampleMode)
 /* harmony export */ });
@@ -41264,8 +41272,8 @@ function getSpuitSampleImageData(axpObj, x, y, mode = SPUIT_SAMPLE_MODE.COMPOSIT
     const imageData = axpObj.layerSystem.getImage();
     const width = imageData.width || axpObj.x_size;
     const height = imageData.height || axpObj.y_size;
-    const ix = Math.trunc(x);
-    const iy = Math.trunc(y);
+    const ix = Math.floor(x);
+    const iy = Math.floor(y);
     if (ix < 0 || iy < 0 || ix >= width || iy >= height) {
         return { data: new Uint8ClampedArray([0, 0, 0, 0]) };
     }
@@ -41273,6 +41281,32 @@ function getSpuitSampleImageData(axpObj, x, y, mode = SPUIT_SAMPLE_MODE.COMPOSIT
     return {
         data: imageData.data.slice(index, index + 4),
     };
+}
+
+function getSpuitPreviewImageData(axpObj, sx0, sy0, sw, sh) {
+    const source = axpObj.layerSystem.getImage();
+    const sourceWidth = source.width || axpObj.x_size;
+    const sourceHeight = source.height || axpObj.y_size;
+    const preview = new ImageData(sw, sh);
+
+    for (let y = 0; y < sh; y++) {
+        const sourceY = sy0 + y;
+        if (sourceY < 0 || sourceY >= sourceHeight) continue;
+
+        for (let x = 0; x < sw; x++) {
+            const sourceX = sx0 + x;
+            if (sourceX < 0 || sourceX >= sourceWidth) continue;
+
+            const sourceIndex = (sourceY * sourceWidth + sourceX) * 4;
+            const previewIndex = (y * sw + x) * 4;
+            preview.data[previewIndex] = source.data[sourceIndex];
+            preview.data[previewIndex + 1] = source.data[sourceIndex + 1];
+            preview.data[previewIndex + 2] = source.data[sourceIndex + 2];
+            preview.data[previewIndex + 3] = source.data[sourceIndex + 3];
+        }
+    }
+
+    return preview;
 }
 
 // スポイト
@@ -41344,8 +41378,8 @@ class Spuit extends _penobj_js__WEBPACK_IMPORTED_MODULE_0__.PenObj {
             const dy = sy0 - (y - 2);
             // 拡大イメージをプレビュー表示
             if (this.axpObj.penSystem.getSpuitSampleMode() === SPUIT_SAMPLE_MODE.LAYER) {
-                const imageData = this.axpObj.layerSystem.getImage();
-                ctx.putImageData(imageData, dx - sx0, dy - sy0, sx0, sy0, sw, sh);
+                const previewImageData = getSpuitPreviewImageData(this.axpObj, sx0, sy0, sw, sh);
+                ctx.putImageData(previewImageData, dx, dy);
             } else {
                 // 座標の周囲を読み取る（ポインタ座標がキャンバスをはみ出さない場合、通常は５ドット）
                 const imagedata = this.axpObj.CANVAS.main_ctx.getImageData(sx0, sy0, sw, sh);
@@ -42864,6 +42898,7 @@ const STORE_NAME_SAVE_MANUAL = 'save_manual';
 const STORE_NAME_SAVE_AUTO = 'save_auto';
 const STORE_NAME_CONFIG = 'save_config';
 const STORE_NAME_PALETTE = 'save_palette';
+const WET_PALETTE_SAVE_ID = 'wet_palette_01';
 
 // 自動保存の最大スロット数
 const AUTOSAVE_MAX = 20;
@@ -43344,6 +43379,46 @@ class SaveSystem {
             return;
         }
     }
+    save_wetPalette(dataUrl) {
+        if (!this.isDBAvailable || typeof dataUrl !== 'string') return false;
+
+        const data = {
+            id: WET_PALETTE_SAVE_ID,
+            dataUrl,
+        };
+        try {
+            this.dbSystem.saveToDB(data, STORE_NAME_CONFIG).catch((error) => {
+                console.log(error);
+            });
+            return true;
+        } catch (error) {
+            console.log(error);
+            return false;
+        }
+    }
+    async load_wetPalette() {
+        if (!this.isDBAvailable) return null;
+
+        try {
+            const result = await this.dbSystem.loadFromDB(WET_PALETTE_SAVE_ID, STORE_NAME_CONFIG);
+            return typeof result.dataUrl === 'string' ? result.dataUrl : null;
+        } catch {
+            return null;
+        }
+    }
+    delete_wetPalette() {
+        if (!this.isDBAvailable) return false;
+
+        try {
+            this.dbSystem.deleteFromDB(WET_PALETTE_SAVE_ID, STORE_NAME_CONFIG).catch((error) => {
+                console.log(error);
+            });
+            return true;
+        } catch (error) {
+            console.log(error);
+            return false;
+        }
+    }
 }
 
 // indexedDB処理系
@@ -43486,6 +43561,26 @@ class DbSystem {
                 const deleteReq = store.delete(key);
                 deleteReq.onerror = () => {
                     reject(new Error('deleteAutoSave:deleteReq.onerror'));
+                }
+                deleteReq.onsuccess = () => {
+                    resolve();
+                }
+            }
+        });
+    }
+    deleteFromDB(id, storeName) {
+        return new Promise((resolve, reject) => {
+            const openReq = indexedDB.open(DB_NAME, DB_VERSION);
+            openReq.onerror = () => {
+                reject(new Error('deleteFromDB:openReq.onerror'));
+            }
+            openReq.onsuccess = () => {
+                const db = openReq.result;
+                const transaction = db.transaction(storeName, "readwrite");
+                const store = transaction.objectStore(storeName);
+                const deleteReq = store.delete(id);
+                deleteReq.onerror = () => {
+                    reject(new Error('deleteFromDB:deleteReq.onerror'));
                 }
                 deleteReq.onsuccess = () => {
                     resolve();
@@ -47830,9 +47925,9 @@ const util = {
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
 /* harmony export */   ColorMakerSystem: () => (/* binding */ ColorMakerSystem),
-/* harmony export */   WET_PALETTE_STORAGE_KEY: () => (/* binding */ WET_PALETTE_STORAGE_KEY),
 /* harmony export */   clearWetPaletteSnapshot: () => (/* binding */ clearWetPaletteSnapshot),
 /* harmony export */   isValidWetPaletteDataUrl: () => (/* binding */ isValidWetPaletteDataUrl),
+/* harmony export */   loadWetPaletteSnapshot: () => (/* binding */ loadWetPaletteSnapshot),
 /* harmony export */   saveWetPaletteSnapshot: () => (/* binding */ saveWetPaletteSnapshot),
 /* harmony export */   serializeWetPaletteCanvas: () => (/* binding */ serializeWetPaletteCanvas)
 /* harmony export */ });
@@ -47857,8 +47952,6 @@ __webpack_require__.r(__webpack_exports__);
 
 
 
-const WET_PALETTE_STORAGE_KEY = 'AXP_WET_PALETTE';
-
 function isValidWetPaletteDataUrl(value) {
     return typeof value === 'string' && value.startsWith('data:image/png;base64,');
 }
@@ -47872,32 +47965,34 @@ function serializeWetPaletteCanvas(canvas) {
     }
 }
 
-function saveWetPaletteSnapshot(storage, canvas) {
+function saveWetPaletteSnapshot(saveSystem, canvas) {
     try {
         const dataUrl = serializeWetPaletteCanvas(canvas);
-        if (!dataUrl || typeof storage?.setItem !== 'function') return false;
-        storage.setItem(WET_PALETTE_STORAGE_KEY, dataUrl);
+        if (!dataUrl || typeof saveSystem?.save_wetPalette !== 'function') return false;
+        saveSystem.save_wetPalette(dataUrl);
         return true;
     } catch {
         return false;
     }
 }
 
-function clearWetPaletteSnapshot(storage) {
+async function loadWetPaletteSnapshot(saveSystem) {
     try {
-        if (typeof storage?.removeItem !== 'function') return false;
-        storage.removeItem(WET_PALETTE_STORAGE_KEY);
-        return true;
-    } catch {
-        return false;
-    }
-}
-
-function getWetPaletteStorage() {
-    try {
-        return globalThis.localStorage ?? null;
+        if (typeof saveSystem?.load_wetPalette !== 'function') return null;
+        const dataUrl = await saveSystem.load_wetPalette();
+        return isValidWetPaletteDataUrl(dataUrl) ? dataUrl : null;
     } catch {
         return null;
+    }
+}
+
+function clearWetPaletteSnapshot(saveSystem) {
+    try {
+        if (typeof saveSystem?.delete_wetPalette !== 'function') return false;
+        saveSystem.delete_wetPalette();
+        return true;
+    } catch {
+        return false;
     }
 }
 
@@ -47959,7 +48054,6 @@ class ColorMakerSystem extends _window_js__WEBPACK_IMPORTED_MODULE_0__.ToolWindo
         this.wetPaletteCanvas = document.getElementById('axp_makecolor_canvas_wetPalette');
         this.wetPaletteCtx = this.wetPaletteCanvas.getContext('2d');
         this._wetPaletteRestoreToken = 0;
-        this._restoreWetPaletteSnapshot();
 
         // カラーピッカー：使用定義
         this.colorWheel = new _reinvented_color_wheel_js__WEBPACK_IMPORTED_MODULE_5__["default"]({
@@ -48103,6 +48197,7 @@ class ColorMakerSystem extends _window_js__WEBPACK_IMPORTED_MODULE_0__.ToolWindo
                 if (activePointerId !== null) return;
                 activePointerId = e.pointerId;
                 moved = false;
+                this._wetPaletteRestoreToken = (this._wetPaletteRestoreToken || 0) + 1;
                 canvas.setPointerCapture(e.pointerId);
                 const pos = toCanvasCoords(e.clientX, e.clientY);
                 startX = lastX = pos.x;
@@ -48622,20 +48717,17 @@ class ColorMakerSystem extends _window_js__WEBPACK_IMPORTED_MODULE_0__.ToolWindo
     }
     _saveWetPaletteSnapshot() {
         this._wetPaletteRestoreToken = (this._wetPaletteRestoreToken || 0) + 1;
-        saveWetPaletteSnapshot(getWetPaletteStorage(), this.wetPaletteCanvas);
+        saveWetPaletteSnapshot(this.axpObj.saveSystem, this.wetPaletteCanvas);
     }
     _clearWetPaletteSnapshot() {
         this._wetPaletteRestoreToken = (this._wetPaletteRestoreToken || 0) + 1;
-        clearWetPaletteSnapshot(getWetPaletteStorage());
+        clearWetPaletteSnapshot(this.axpObj.saveSystem);
     }
-    _restoreWetPaletteSnapshot() {
-        const storage = getWetPaletteStorage();
-        let dataUrl;
-        try {
-            dataUrl = storage?.getItem?.(WET_PALETTE_STORAGE_KEY);
-        } catch {
-            return;
-        }
+    async restoreWetPaletteSnapshot() {
+        await this._restoreWetPaletteSnapshot();
+    }
+    async _restoreWetPaletteSnapshot() {
+        const dataUrl = await loadWetPaletteSnapshot(this.axpObj.saveSystem);
         if (!isValidWetPaletteDataUrl(dataUrl) || typeof Image === 'undefined') return;
 
         const token = (this._wetPaletteRestoreToken = (this._wetPaletteRestoreToken || 0) + 1);
@@ -50711,6 +50803,9 @@ class PenSystem extends _window_js__WEBPACK_IMPORTED_MODULE_0__.ToolWindow {
         var y = pos.y;
         // 座標のドットを読み取る
         var imagedata = (0,_pendefine_spuit_js__WEBPACK_IMPORTED_MODULE_13__.getSpuitSampleImageData)(this.axpObj, x, y, this.getSpuitSampleMode());
+        if (imagedata.data[3] === 0) {
+            return;
+        }
         // RGBAの取得
         var r = imagedata.data[0];
         var g = imagedata.data[1];
@@ -51904,7 +51999,7 @@ __webpack_require__.r(__webpack_exports__);
     axpObj;
     constructor(option) {
         console.log('version:', "3.0.0-alpha");
-        console.log('build:', "2026-07-07T07:49:22.856Z");
+        console.log('build:', "2026-07-07T08:44:36.747Z");
         (async () => {
             // 追加辞書オプションチェック
             let additionalDictionaryJSON = null;
@@ -52285,7 +52380,7 @@ __webpack_require__.r(__webpack_exports__);
     }
     // バージョン
     version() {
-        return `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-07-07T07:49:22.856Z"})`;
+        return `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-07-07T08:44:36.747Z"})`;
     }
     // 画面の表示／非表示
     on() {
@@ -52297,7 +52392,7 @@ __webpack_require__.r(__webpack_exports__);
         this.axpObj.isClose = true;
     }
     static ver() {
-        return `version ${"3.0.0-alpha"} (${"2026-07-07T07:49:22.856Z"})`;
+        return `version ${"3.0.0-alpha"} (${"2026-07-07T08:44:36.747Z"})`;
     }
 });
 

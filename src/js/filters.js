@@ -10,8 +10,14 @@ export function colorToAlpha(imageData, options = { r: 255, g: 255, b: 255 }) {
     const dst = out.data;
     const mode = options?.mode || 'unmix';
     const replacementColor = options?.replacementColor || null;
+    const legacyBaseColor = options
+        && typeof options.r === 'number'
+        && typeof options.g === 'number'
+        && typeof options.b === 'number'
+        ? options
+        : null;
     const baseColor = mode === 'unmix'
-        ? (options?.baseColor || options)
+        ? (options?.baseColor || legacyBaseColor || { r: 255, g: 255, b: 255 })
         : { r: 255, g: 255, b: 255 };
     const { r: br, g: bg, b: bb } = baseColor;
 

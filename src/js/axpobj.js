@@ -2780,6 +2780,7 @@ export class AXPObj {
                         alert('エラー:ユーザーパレットの読み込みに失敗しました。デフォルト設定で起動します。');
                     }
                 }
+                await this.colorMakerSystem.restoreWetPaletteSnapshot();
             }
             // ユーザー設定の復元が完了した後に行う処理 ------------------------------------------------
 

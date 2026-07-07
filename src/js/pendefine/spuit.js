@@ -22,8 +22,8 @@ export function getSpuitSampleImageData(axpObj, x, y, mode = SPUIT_SAMPLE_MODE.C
     const imageData = axpObj.layerSystem.getImage();
     const width = imageData.width || axpObj.x_size;
     const height = imageData.height || axpObj.y_size;
-    const ix = Math.trunc(x);
-    const iy = Math.trunc(y);
+    const ix = Math.floor(x);
+    const iy = Math.floor(y);
     if (ix < 0 || iy < 0 || ix >= width || iy >= height) {
         return { data: new Uint8ClampedArray([0, 0, 0, 0]) };
     }
@@ -31,6 +31,32 @@ export function getSpuitSampleImageData(axpObj, x, y, mode = SPUIT_SAMPLE_MODE.C
     return {
         data: imageData.data.slice(index, index + 4),
     };
+}
+
+export function getSpuitPreviewImageData(axpObj, sx0, sy0, sw, sh) {
+    const source = axpObj.layerSystem.getImage();
+    const sourceWidth = source.width || axpObj.x_size;
+    const sourceHeight = source.height || axpObj.y_size;
+    const preview = new ImageData(sw, sh);
+
+    for (let y = 0; y < sh; y++) {
+        const sourceY = sy0 + y;
+        if (sourceY < 0 || sourceY >= sourceHeight) continue;
+
+        for (let x = 0; x < sw; x++) {
+            const sourceX = sx0 + x;
+            if (sourceX < 0 || sourceX >= sourceWidth) continue;
+
+            const sourceIndex = (sourceY * sourceWidth + sourceX) * 4;
+            const previewIndex = (y * sw + x) * 4;
+            preview.data[previewIndex] = source.data[sourceIndex];
+            preview.data[previewIndex + 1] = source.data[sourceIndex + 1];
+            preview.data[previewIndex + 2] = source.data[sourceIndex + 2];
+            preview.data[previewIndex + 3] = source.data[sourceIndex + 3];
+        }
+    }
+
+    return preview;
 }
 
 // スポイト
@@ -102,8 +128,8 @@ export class Spuit extends PenObj {
             const dy = sy0 - (y - 2);
             // 拡大イメージをプレビュー表示
             if (this.axpObj.penSystem.getSpuitSampleMode() === SPUIT_SAMPLE_MODE.LAYER) {
-                const imageData = this.axpObj.layerSystem.getImage();
-                ctx.putImageData(imageData, dx - sx0, dy - sy0, sx0, sy0, sw, sh);
+                const previewImageData = getSpuitPreviewImageData(this.axpObj, sx0, sy0, sw, sh);
+                ctx.putImageData(previewImageData, dx, dy);
             } else {
                 // 座標の周囲を読み取る（ポインタ座標がキャンバスをはみ出さない場合、通常は５ドット）
                 const imagedata = this.axpObj.CANVAS.main_ctx.getImageData(sx0, sy0, sw, sh);

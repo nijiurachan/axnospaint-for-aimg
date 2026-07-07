@@ -12,8 +12,6 @@ import { rgb2cmyk, cmyk2rgb, rgb2lab, lab2rgb } from './colorconvert.js';
 import ReinventedColorWheel from './reinvented-color-wheel.js';
 import '../css/reinvented-color-wheel.css';
 
-export const WET_PALETTE_STORAGE_KEY = 'AXP_WET_PALETTE';
-
 export function isValidWetPaletteDataUrl(value) {
     return typeof value === 'string' && value.startsWith('data:image/png;base64,');
 }
@@ -27,32 +25,34 @@ export function serializeWetPaletteCanvas(canvas) {
     }
 }
 
-export function saveWetPaletteSnapshot(storage, canvas) {
+export function saveWetPaletteSnapshot(saveSystem, canvas) {
     try {
         const dataUrl = serializeWetPaletteCanvas(canvas);
-        if (!dataUrl || typeof storage?.setItem !== 'function') return false;
-        storage.setItem(WET_PALETTE_STORAGE_KEY, dataUrl);
+        if (!dataUrl || typeof saveSystem?.save_wetPalette !== 'function') return false;
+        saveSystem.save_wetPalette(dataUrl);
         return true;
     } catch {
         return false;
     }
 }
 
-export function clearWetPaletteSnapshot(storage) {
+export async function loadWetPaletteSnapshot(saveSystem) {
     try {
-        if (typeof storage?.removeItem !== 'function') return false;
-        storage.removeItem(WET_PALETTE_STORAGE_KEY);
-        return true;
-    } catch {
-        return false;
-    }
-}
-
-function getWetPaletteStorage() {
-    try {
-        return globalThis.localStorage ?? null;
+        if (typeof saveSystem?.load_wetPalette !== 'function') return null;
+        const dataUrl = await saveSystem.load_wetPalette();
+        return isValidWetPaletteDataUrl(dataUrl) ? dataUrl : null;
     } catch {
         return null;
+    }
+}
+
+export function clearWetPaletteSnapshot(saveSystem) {
+    try {
+        if (typeof saveSystem?.delete_wetPalette !== 'function') return false;
+        saveSystem.delete_wetPalette();
+        return true;
+    } catch {
+        return false;
     }
 }
 
@@ -114,7 +114,6 @@ export class ColorMakerSystem extends ToolWindow {
         this.wetPaletteCanvas = document.getElementById('axp_makecolor_canvas_wetPalette');
         this.wetPaletteCtx = this.wetPaletteCanvas.getContext('2d');
         this._wetPaletteRestoreToken = 0;
-        this._restoreWetPaletteSnapshot();
 
         // カラーピッカー：使用定義
         this.colorWheel = new ReinventedColorWheel({
@@ -258,6 +257,7 @@ export class ColorMakerSystem extends ToolWindow {
                 if (activePointerId !== null) return;
                 activePointerId = e.pointerId;
                 moved = false;
+                this._wetPaletteRestoreToken = (this._wetPaletteRestoreToken || 0) + 1;
                 canvas.setPointerCapture(e.pointerId);
                 const pos = toCanvasCoords(e.clientX, e.clientY);
                 startX = lastX = pos.x;
@@ -777,20 +777,17 @@ export class ColorMakerSystem extends ToolWindow {
     }
     _saveWetPaletteSnapshot() {
         this._wetPaletteRestoreToken = (this._wetPaletteRestoreToken || 0) + 1;
-        saveWetPaletteSnapshot(getWetPaletteStorage(), this.wetPaletteCanvas);
+        saveWetPaletteSnapshot(this.axpObj.saveSystem, this.wetPaletteCanvas);
     }
     _clearWetPaletteSnapshot() {
         this._wetPaletteRestoreToken = (this._wetPaletteRestoreToken || 0) + 1;
-        clearWetPaletteSnapshot(getWetPaletteStorage());
+        clearWetPaletteSnapshot(this.axpObj.saveSystem);
     }
-    _restoreWetPaletteSnapshot() {
-        const storage = getWetPaletteStorage();
-        let dataUrl;
-        try {
-            dataUrl = storage?.getItem?.(WET_PALETTE_STORAGE_KEY);
-        } catch {
-            return;
-        }
+    async restoreWetPaletteSnapshot() {
+        await this._restoreWetPaletteSnapshot();
+    }
+    async _restoreWetPaletteSnapshot() {
+        const dataUrl = await loadWetPaletteSnapshot(this.axpObj.saveSystem);
         if (!isValidWetPaletteDataUrl(dataUrl) || typeof Image === 'undefined') return;
 
         const token = (this._wetPaletteRestoreToken = (this._wetPaletteRestoreToken || 0) + 1);

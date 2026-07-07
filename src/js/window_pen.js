@@ -1322,6 +1322,9 @@ export class PenSystem extends ToolWindow {
         var y = pos.y;
         // 座標のドットを読み取る
         var imagedata = getSpuitSampleImageData(this.axpObj, x, y, this.getSpuitSampleMode());
+        if (imagedata.data[3] === 0) {
+            return;
+        }
         // RGBAの取得
         var r = imagedata.data[0];
         var g = imagedata.data[1];

@@ -6,8 +6,9 @@ import { UTIL, inRange, getFileNameFromURL } from './etc.js';
 const AUTOSAVE_INTERVAL = 10;
 // indexedDB定義
 const DB_NAME = 'axnospaint_db1';
-const DB_VERSION = 2;
+export const DB_VERSION = 4;
 const STORE_NAME_SAVE_MANUAL = 'save_manual';
+const STORE_NAME_SAVE_MANUAL_THUMBNAIL = 'save_manual_thumbnail';
 const STORE_NAME_SAVE_AUTO = 'save_auto';
 const STORE_NAME_CONFIG = 'save_config';
 const STORE_NAME_PALETTE = 'save_palette';
@@ -16,7 +17,70 @@ const WET_PALETTE_SAVE_ID = 'wet_palette_01';
 // 自動保存の最大スロット数
 const AUTOSAVE_MAX = 20;
 // マニュアル保存の最大スロット数
-const MANUALSAVE_MAX = 5;
+export const MANUALSAVE_MAX = 20;
+
+export function createManualSaveSlotId(index) {
+    return `save_${String(index).padStart(2, '0')}`;
+}
+
+export function putEmptyManualSaveSlots(store, startIndex = 1) {
+    for (let index = startIndex; index <= MANUALSAVE_MAX; index++) {
+        store.put({ id: createManualSaveSlotId(index) });
+    }
+}
+
+export function createManualSaveBody(data) {
+    const body = { ...data };
+    delete body.src;
+    return body;
+}
+
+export function createManualSaveThumbnail(data) {
+    const thumbnail = {
+        id: data.id
+    };
+    if (data.created !== undefined) {
+        thumbnail.created = data.created;
+    }
+    if (data.src !== undefined) {
+        thumbnail.src = data.src;
+    }
+    if (data.oekaki_id !== undefined) {
+        thumbnail.oekaki_id = data.oekaki_id;
+    }
+    if (data.draftImageFile !== undefined) {
+        thumbnail.draftImageFile = data.draftImageFile;
+    }
+    return thumbnail;
+}
+
+export function splitManualSaveData(data) {
+    return {
+        body: createManualSaveBody(data),
+        thumbnail: createManualSaveThumbnail(data)
+    };
+}
+
+export function getManualSaveSlotMigrationStartIndex(oldVersion) {
+    return oldVersion <= 2 ? 6 : 11;
+}
+
+function migrateManualSaveThumbnails(storeManual, storeManualThumbnail) {
+    const readReq = storeManual.openCursor();
+    readReq.onsuccess = () => {
+        const cursor = readReq.result;
+        if (!cursor) {
+            return;
+        }
+        const value = cursor.value;
+        const { body, thumbnail } = splitManualSaveData(value);
+        storeManualThumbnail.put(thumbnail);
+        if (value.src !== undefined) {
+            cursor.update(body);
+        }
+        cursor.continue();
+    };
+}
 
 export class SaveSystem {
     axpObj;
@@ -156,9 +220,11 @@ export class SaveSystem {
         // セーブデータありのスロット
         if (value.created !== undefined) {
             // サムネイル画像
-            const newImg = document.createElement('img');
-            newImg.setAttribute('src', value.src);
-            newDivThumbnall.appendChild(newImg);
+            if (value.src !== undefined) {
+                const newImg = document.createElement('img');
+                newImg.setAttribute('src', value.src);
+                newDivThumbnall.appendChild(newImg);
+            }
             // 日付、時刻、基にしたoekaki_idの要素作成
             const newDivDate = document.createElement('div');
             const newDivTime = document.createElement('div');
@@ -218,10 +284,11 @@ export class SaveSystem {
                     this.axpObj.finalizeLiquifySession();
                     // data-keyに記憶しておいた主キーを使用する
                     const save_id = e.currentTarget.dataset.key;
-                    const data = {
+                    const created = new Date();
+                    const fullSaveData = {
                         id: save_id,
                         version: this.CONST.DATA_VERSION,
-                        created: new Date(),
+                        created: created,
                         src: this.axpObj.assistToolSystem.CANVAS.thumbnail.toDataURL(),
                         x_max: this.axpObj.x_size,
                         y_max: this.axpObj.y_size,
@@ -233,11 +300,12 @@ export class SaveSystem {
                         oekaki_bbs_title: this.axpObj.oekaki_bbs_title,
                         transparent: this.axpObj.assistToolSystem.getIsTransparent()
                     };
+                    const { body, thumbnail } = splitManualSaveData(fullSaveData);
 
                     (async () => {
                         // 指定のデータをDBへ書き込む
                         try {
-                            await this.dbSystem.saveToDB(data, STORE_NAME_SAVE_MANUAL);
+                            await this.dbSystem.saveManualToDB(body, thumbnail);
                             // スロット%1にセーブしました。
                             this.axpObj.msg('@INF0300', save_id.substr(5));
                         } catch (error) {
@@ -551,12 +619,10 @@ class DbSystem {
                 const db = openReq.result;
                 // 初回利用時（またはDBが古い状態の時）DBを新規作成／更新する
                 if (event.oldVersion <= 1) {
-                    const store_manual = db.createObjectStore(STORE_NAME_SAVE_MANUAL, { keyPath: 'id' });
-                    store_manual.put({ id: 'save_01' });
-                    store_manual.put({ id: 'save_02' });
-                    store_manual.put({ id: 'save_03' });
-                    store_manual.put({ id: 'save_04' });
-                    store_manual.put({ id: 'save_05' });
+                    const storeManual = db.createObjectStore(STORE_NAME_SAVE_MANUAL, { keyPath: 'id' });
+                    const storeManualThumbnail = db.createObjectStore(STORE_NAME_SAVE_MANUAL_THUMBNAIL, { keyPath: 'id' });
+                    putEmptyManualSaveSlots(storeManual);
+                    putEmptyManualSaveSlots(storeManualThumbnail);
 
                     const store_auto = db.createObjectStore(STORE_NAME_SAVE_AUTO, { autoIncrement: true });
                     store_auto.createIndex('created', 'created', { unique: false });
@@ -566,6 +632,15 @@ class DbSystem {
 
                     const store_palette = db.createObjectStore(STORE_NAME_PALETTE, { keyPath: 'id' });
                     store_palette.put({ id: 'palette_01' });
+                } else if (event.oldVersion < DB_VERSION) {
+                    const storeManual = openReq.transaction.objectStore(STORE_NAME_SAVE_MANUAL);
+                    const storeManualThumbnail = db.objectStoreNames.contains(STORE_NAME_SAVE_MANUAL_THUMBNAIL)
+                        ? openReq.transaction.objectStore(STORE_NAME_SAVE_MANUAL_THUMBNAIL)
+                        : db.createObjectStore(STORE_NAME_SAVE_MANUAL_THUMBNAIL, { keyPath: 'id' });
+                    migrateManualSaveThumbnails(storeManual, storeManualThumbnail);
+                    const startIndex = getManualSaveSlotMigrationStartIndex(event.oldVersion);
+                    putEmptyManualSaveSlots(storeManual, startIndex);
+                    putEmptyManualSaveSlots(storeManualThumbnail, startIndex);
                 }
             }
             openReq.onsuccess = () => {
@@ -589,8 +664,9 @@ class DbSystem {
             openReq.onsuccess = () => {
                 db = openReq.result;
                 // DBから読み込み
-                const transaction = db.transaction(storeName);
-                const store = transaction.objectStore(storeName);
+                const listStoreName = storeName === STORE_NAME_SAVE_MANUAL ? STORE_NAME_SAVE_MANUAL_THUMBNAIL : storeName;
+                const transaction = db.transaction(listStoreName);
+                const store = transaction.objectStore(listStoreName);
 
                 let direction;
                 let slotMAX;
@@ -719,6 +795,29 @@ class DbSystem {
                 saveReq.onsuccess = () => {
                     resolve();
                 }
+            }
+        });
+    }
+    saveManualToDB(data, thumbnail) {
+        return new Promise((resolve, reject) => {
+            const openReq = indexedDB.open(DB_NAME, DB_VERSION);
+            openReq.onerror = () => {
+                reject(new Error('saveManualToDB:openReq.onerror'));
+            }
+            openReq.onsuccess = () => {
+                const db = openReq.result;
+                const transaction = db.transaction(
+                    [STORE_NAME_SAVE_MANUAL, STORE_NAME_SAVE_MANUAL_THUMBNAIL],
+                    "readwrite"
+                );
+                transaction.onerror = () => {
+                    reject(new Error('saveManualToDB:transaction.onerror'));
+                }
+                transaction.oncomplete = () => {
+                    resolve();
+                }
+                transaction.objectStore(STORE_NAME_SAVE_MANUAL).put(data);
+                transaction.objectStore(STORE_NAME_SAVE_MANUAL_THUMBNAIL).put(thumbnail);
             }
         });
     }

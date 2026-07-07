@@ -1,5 +1,5 @@
 /*!
- * AXNOS Paint w/ nijiurachan custom version 3.0.0-alpha (2026-07-07T08:57:28.307Z)
+ * AXNOS Paint w/ nijiurachan custom version 3.0.0-alpha (2026-07-07T10:55:23.550Z)
  * (c) 2026- nijiurachan contributors
  * (c) 2022「悪の巣」部屋番号13番：「趣味の悪い大衆酒場[Mad end dance hall]」
  * Licensed under MPL 2.0
@@ -31846,7 +31846,7 @@ class ConfigSystem {
         let targetElement = document.getElementById('axp_config');
         targetElement.insertAdjacentHTML('afterbegin', this.axpObj.translateHTML(_html_config_txt__WEBPACK_IMPORTED_MODULE_2__));
         // バージョン情報の表示
-        document.getElementById('axp_config_div_versionInfo').textContent = `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-07-07T08:57:28.307Z"})`
+        document.getElementById('axp_config_div_versionInfo').textContent = `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-07-07T10:55:23.550Z"})`
     }
     // HTML展開
     deployHTML() {
@@ -42882,7 +42882,15 @@ var ReinventedColorWheel = (function () {
 
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
-/* harmony export */   SaveSystem: () => (/* binding */ SaveSystem)
+/* harmony export */   DB_VERSION: () => (/* binding */ DB_VERSION),
+/* harmony export */   MANUALSAVE_MAX: () => (/* binding */ MANUALSAVE_MAX),
+/* harmony export */   SaveSystem: () => (/* binding */ SaveSystem),
+/* harmony export */   createManualSaveBody: () => (/* binding */ createManualSaveBody),
+/* harmony export */   createManualSaveSlotId: () => (/* binding */ createManualSaveSlotId),
+/* harmony export */   createManualSaveThumbnail: () => (/* binding */ createManualSaveThumbnail),
+/* harmony export */   getManualSaveSlotMigrationStartIndex: () => (/* binding */ getManualSaveSlotMigrationStartIndex),
+/* harmony export */   putEmptyManualSaveSlots: () => (/* binding */ putEmptyManualSaveSlots),
+/* harmony export */   splitManualSaveData: () => (/* binding */ splitManualSaveData)
 /* harmony export */ });
 /* harmony import */ var _etc_js__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ./etc.js */ "./src/js/etc.js");
 // @description セーブ／ロード／自動保存から復元処理 indexedDB処理系
@@ -42893,8 +42901,9 @@ __webpack_require__.r(__webpack_exports__);
 const AUTOSAVE_INTERVAL = 10;
 // indexedDB定義
 const DB_NAME = 'axnospaint_db1';
-const DB_VERSION = 2;
+const DB_VERSION = 4;
 const STORE_NAME_SAVE_MANUAL = 'save_manual';
+const STORE_NAME_SAVE_MANUAL_THUMBNAIL = 'save_manual_thumbnail';
 const STORE_NAME_SAVE_AUTO = 'save_auto';
 const STORE_NAME_CONFIG = 'save_config';
 const STORE_NAME_PALETTE = 'save_palette';
@@ -42903,7 +42912,70 @@ const WET_PALETTE_SAVE_ID = 'wet_palette_01';
 // 自動保存の最大スロット数
 const AUTOSAVE_MAX = 20;
 // マニュアル保存の最大スロット数
-const MANUALSAVE_MAX = 5;
+const MANUALSAVE_MAX = 20;
+
+function createManualSaveSlotId(index) {
+    return `save_${String(index).padStart(2, '0')}`;
+}
+
+function putEmptyManualSaveSlots(store, startIndex = 1) {
+    for (let index = startIndex; index <= MANUALSAVE_MAX; index++) {
+        store.put({ id: createManualSaveSlotId(index) });
+    }
+}
+
+function createManualSaveBody(data) {
+    const body = { ...data };
+    delete body.src;
+    return body;
+}
+
+function createManualSaveThumbnail(data) {
+    const thumbnail = {
+        id: data.id
+    };
+    if (data.created !== undefined) {
+        thumbnail.created = data.created;
+    }
+    if (data.src !== undefined) {
+        thumbnail.src = data.src;
+    }
+    if (data.oekaki_id !== undefined) {
+        thumbnail.oekaki_id = data.oekaki_id;
+    }
+    if (data.draftImageFile !== undefined) {
+        thumbnail.draftImageFile = data.draftImageFile;
+    }
+    return thumbnail;
+}
+
+function splitManualSaveData(data) {
+    return {
+        body: createManualSaveBody(data),
+        thumbnail: createManualSaveThumbnail(data)
+    };
+}
+
+function getManualSaveSlotMigrationStartIndex(oldVersion) {
+    return oldVersion <= 2 ? 6 : 11;
+}
+
+function migrateManualSaveThumbnails(storeManual, storeManualThumbnail) {
+    const readReq = storeManual.openCursor();
+    readReq.onsuccess = () => {
+        const cursor = readReq.result;
+        if (!cursor) {
+            return;
+        }
+        const value = cursor.value;
+        const { body, thumbnail } = splitManualSaveData(value);
+        storeManualThumbnail.put(thumbnail);
+        if (value.src !== undefined) {
+            cursor.update(body);
+        }
+        cursor.continue();
+    };
+}
 
 class SaveSystem {
     axpObj;
@@ -43043,9 +43115,11 @@ class SaveSystem {
         // セーブデータありのスロット
         if (value.created !== undefined) {
             // サムネイル画像
-            const newImg = document.createElement('img');
-            newImg.setAttribute('src', value.src);
-            newDivThumbnall.appendChild(newImg);
+            if (value.src !== undefined) {
+                const newImg = document.createElement('img');
+                newImg.setAttribute('src', value.src);
+                newDivThumbnall.appendChild(newImg);
+            }
             // 日付、時刻、基にしたoekaki_idの要素作成
             const newDivDate = document.createElement('div');
             const newDivTime = document.createElement('div');
@@ -43105,10 +43179,11 @@ class SaveSystem {
                     this.axpObj.finalizeLiquifySession();
                     // data-keyに記憶しておいた主キーを使用する
                     const save_id = e.currentTarget.dataset.key;
-                    const data = {
+                    const created = new Date();
+                    const fullSaveData = {
                         id: save_id,
                         version: this.CONST.DATA_VERSION,
-                        created: new Date(),
+                        created: created,
                         src: this.axpObj.assistToolSystem.CANVAS.thumbnail.toDataURL(),
                         x_max: this.axpObj.x_size,
                         y_max: this.axpObj.y_size,
@@ -43120,11 +43195,12 @@ class SaveSystem {
                         oekaki_bbs_title: this.axpObj.oekaki_bbs_title,
                         transparent: this.axpObj.assistToolSystem.getIsTransparent()
                     };
+                    const { body, thumbnail } = splitManualSaveData(fullSaveData);
 
                     (async () => {
                         // 指定のデータをDBへ書き込む
                         try {
-                            await this.dbSystem.saveToDB(data, STORE_NAME_SAVE_MANUAL);
+                            await this.dbSystem.saveManualToDB(body, thumbnail);
                             // スロット%1にセーブしました。
                             this.axpObj.msg('@INF0300', save_id.substr(5));
                         } catch (error) {
@@ -43438,12 +43514,10 @@ class DbSystem {
                 const db = openReq.result;
                 // 初回利用時（またはDBが古い状態の時）DBを新規作成／更新する
                 if (event.oldVersion <= 1) {
-                    const store_manual = db.createObjectStore(STORE_NAME_SAVE_MANUAL, { keyPath: 'id' });
-                    store_manual.put({ id: 'save_01' });
-                    store_manual.put({ id: 'save_02' });
-                    store_manual.put({ id: 'save_03' });
-                    store_manual.put({ id: 'save_04' });
-                    store_manual.put({ id: 'save_05' });
+                    const storeManual = db.createObjectStore(STORE_NAME_SAVE_MANUAL, { keyPath: 'id' });
+                    const storeManualThumbnail = db.createObjectStore(STORE_NAME_SAVE_MANUAL_THUMBNAIL, { keyPath: 'id' });
+                    putEmptyManualSaveSlots(storeManual);
+                    putEmptyManualSaveSlots(storeManualThumbnail);
 
                     const store_auto = db.createObjectStore(STORE_NAME_SAVE_AUTO, { autoIncrement: true });
                     store_auto.createIndex('created', 'created', { unique: false });
@@ -43453,6 +43527,15 @@ class DbSystem {
 
                     const store_palette = db.createObjectStore(STORE_NAME_PALETTE, { keyPath: 'id' });
                     store_palette.put({ id: 'palette_01' });
+                } else if (event.oldVersion < DB_VERSION) {
+                    const storeManual = openReq.transaction.objectStore(STORE_NAME_SAVE_MANUAL);
+                    const storeManualThumbnail = db.objectStoreNames.contains(STORE_NAME_SAVE_MANUAL_THUMBNAIL)
+                        ? openReq.transaction.objectStore(STORE_NAME_SAVE_MANUAL_THUMBNAIL)
+                        : db.createObjectStore(STORE_NAME_SAVE_MANUAL_THUMBNAIL, { keyPath: 'id' });
+                    migrateManualSaveThumbnails(storeManual, storeManualThumbnail);
+                    const startIndex = getManualSaveSlotMigrationStartIndex(event.oldVersion);
+                    putEmptyManualSaveSlots(storeManual, startIndex);
+                    putEmptyManualSaveSlots(storeManualThumbnail, startIndex);
                 }
             }
             openReq.onsuccess = () => {
@@ -43476,8 +43559,9 @@ class DbSystem {
             openReq.onsuccess = () => {
                 db = openReq.result;
                 // DBから読み込み
-                const transaction = db.transaction(storeName);
-                const store = transaction.objectStore(storeName);
+                const listStoreName = storeName === STORE_NAME_SAVE_MANUAL ? STORE_NAME_SAVE_MANUAL_THUMBNAIL : storeName;
+                const transaction = db.transaction(listStoreName);
+                const store = transaction.objectStore(listStoreName);
 
                 let direction;
                 let slotMAX;
@@ -43606,6 +43690,29 @@ class DbSystem {
                 saveReq.onsuccess = () => {
                     resolve();
                 }
+            }
+        });
+    }
+    saveManualToDB(data, thumbnail) {
+        return new Promise((resolve, reject) => {
+            const openReq = indexedDB.open(DB_NAME, DB_VERSION);
+            openReq.onerror = () => {
+                reject(new Error('saveManualToDB:openReq.onerror'));
+            }
+            openReq.onsuccess = () => {
+                const db = openReq.result;
+                const transaction = db.transaction(
+                    [STORE_NAME_SAVE_MANUAL, STORE_NAME_SAVE_MANUAL_THUMBNAIL],
+                    "readwrite"
+                );
+                transaction.onerror = () => {
+                    reject(new Error('saveManualToDB:transaction.onerror'));
+                }
+                transaction.oncomplete = () => {
+                    resolve();
+                }
+                transaction.objectStore(STORE_NAME_SAVE_MANUAL).put(data);
+                transaction.objectStore(STORE_NAME_SAVE_MANUAL_THUMBNAIL).put(thumbnail);
             }
         });
     }
@@ -51998,7 +52105,7 @@ __webpack_require__.r(__webpack_exports__);
     axpObj;
     constructor(option) {
         console.log('version:', "3.0.0-alpha");
-        console.log('build:', "2026-07-07T08:57:28.307Z");
+        console.log('build:', "2026-07-07T10:55:23.550Z");
         (async () => {
             // 追加辞書オプションチェック
             let additionalDictionaryJSON = null;
@@ -52379,7 +52486,7 @@ __webpack_require__.r(__webpack_exports__);
     }
     // バージョン
     version() {
-        return `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-07-07T08:57:28.307Z"})`;
+        return `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-07-07T10:55:23.550Z"})`;
     }
     // 画面の表示／非表示
     on() {
@@ -52391,7 +52498,7 @@ __webpack_require__.r(__webpack_exports__);
         this.axpObj.isClose = true;
     }
     static ver() {
-        return `version ${"3.0.0-alpha"} (${"2026-07-07T08:57:28.307Z"})`;
+        return `version ${"3.0.0-alpha"} (${"2026-07-07T10:55:23.550Z"})`;
     }
 });
 

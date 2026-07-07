@@ -1,5 +1,5 @@
 /*!
- * AXNOS Paint w/ nijiurachan custom version 3.0.0-alpha (2026-07-07T08:44:36.747Z)
+ * AXNOS Paint w/ nijiurachan custom version 3.0.0-alpha (2026-07-07T08:57:28.307Z)
  * (c) 2026- nijiurachan contributors
  * (c) 2022「悪の巣」部屋番号13番：「趣味の悪い大衆酒場[Mad end dance hall]」
  * Licensed under MPL 2.0
@@ -31846,7 +31846,7 @@ class ConfigSystem {
         let targetElement = document.getElementById('axp_config');
         targetElement.insertAdjacentHTML('afterbegin', this.axpObj.translateHTML(_html_config_txt__WEBPACK_IMPORTED_MODULE_2__));
         // バージョン情報の表示
-        document.getElementById('axp_config_div_versionInfo').textContent = `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-07-07T08:44:36.747Z"})`
+        document.getElementById('axp_config_div_versionInfo').textContent = `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-07-07T08:57:28.307Z"})`
     }
     // HTML展開
     deployHTML() {
@@ -43406,13 +43406,11 @@ class SaveSystem {
             return null;
         }
     }
-    delete_wetPalette() {
+    async delete_wetPalette() {
         if (!this.isDBAvailable) return false;
 
         try {
-            this.dbSystem.deleteFromDB(WET_PALETTE_SAVE_ID, STORE_NAME_CONFIG).catch((error) => {
-                console.log(error);
-            });
+            await this.dbSystem.deleteFromDB(WET_PALETTE_SAVE_ID, STORE_NAME_CONFIG);
             return true;
         } catch (error) {
             console.log(error);
@@ -47986,10 +47984,10 @@ async function loadWetPaletteSnapshot(saveSystem) {
     }
 }
 
-function clearWetPaletteSnapshot(saveSystem) {
+async function clearWetPaletteSnapshot(saveSystem) {
     try {
         if (typeof saveSystem?.delete_wetPalette !== 'function') return false;
-        saveSystem.delete_wetPalette();
+        await saveSystem.delete_wetPalette();
         return true;
     } catch {
         return false;
@@ -48235,9 +48233,9 @@ class ColorMakerSystem extends _window_js__WEBPACK_IMPORTED_MODULE_0__.ToolWindo
             canvas.addEventListener('lostpointercapture', endDrag);
         }
         // ボタン：ウェットパレットのクリア
-        document.getElementById('axp_makecolor_button_wetPaletteClear').addEventListener('click', () => {
+        document.getElementById('axp_makecolor_button_wetPaletteClear').addEventListener('click', async () => {
             this.wetPaletteCtx.clearRect(0, 0, this.wetPaletteCanvas.width, this.wetPaletteCanvas.height);
-            this._clearWetPaletteSnapshot();
+            await this._clearWetPaletteSnapshot();
         });
 
         // ボタン：スワップ
@@ -48719,18 +48717,19 @@ class ColorMakerSystem extends _window_js__WEBPACK_IMPORTED_MODULE_0__.ToolWindo
         this._wetPaletteRestoreToken = (this._wetPaletteRestoreToken || 0) + 1;
         saveWetPaletteSnapshot(this.axpObj.saveSystem, this.wetPaletteCanvas);
     }
-    _clearWetPaletteSnapshot() {
+    async _clearWetPaletteSnapshot() {
         this._wetPaletteRestoreToken = (this._wetPaletteRestoreToken || 0) + 1;
-        clearWetPaletteSnapshot(this.axpObj.saveSystem);
+        return clearWetPaletteSnapshot(this.axpObj.saveSystem);
     }
     async restoreWetPaletteSnapshot() {
         await this._restoreWetPaletteSnapshot();
     }
     async _restoreWetPaletteSnapshot() {
+        const token = (this._wetPaletteRestoreToken = (this._wetPaletteRestoreToken || 0) + 1);
         const dataUrl = await loadWetPaletteSnapshot(this.axpObj.saveSystem);
+        if (token !== this._wetPaletteRestoreToken) return;
         if (!isValidWetPaletteDataUrl(dataUrl) || typeof Image === 'undefined') return;
 
-        const token = (this._wetPaletteRestoreToken = (this._wetPaletteRestoreToken || 0) + 1);
         const image = new Image();
         image.onload = () => {
             if (token !== this._wetPaletteRestoreToken) return;
@@ -51999,7 +51998,7 @@ __webpack_require__.r(__webpack_exports__);
     axpObj;
     constructor(option) {
         console.log('version:', "3.0.0-alpha");
-        console.log('build:', "2026-07-07T08:44:36.747Z");
+        console.log('build:', "2026-07-07T08:57:28.307Z");
         (async () => {
             // 追加辞書オプションチェック
             let additionalDictionaryJSON = null;
@@ -52380,7 +52379,7 @@ __webpack_require__.r(__webpack_exports__);
     }
     // バージョン
     version() {
-        return `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-07-07T08:44:36.747Z"})`;
+        return `${this.axpObj.CONST.APP_TITLE} version ${"3.0.0-alpha"} (${"2026-07-07T08:57:28.307Z"})`;
     }
     // 画面の表示／非表示
     on() {
@@ -52392,7 +52391,7 @@ __webpack_require__.r(__webpack_exports__);
         this.axpObj.isClose = true;
     }
     static ver() {
-        return `version ${"3.0.0-alpha"} (${"2026-07-07T08:44:36.747Z"})`;
+        return `version ${"3.0.0-alpha"} (${"2026-07-07T08:57:28.307Z"})`;
     }
 });
 

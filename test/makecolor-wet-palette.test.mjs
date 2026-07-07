@@ -131,7 +131,7 @@ test('wet palette storage helpers never throw when persistence is unavailable', 
   );
   assert.deepEqual(writes.at(-1), ['save', 'data:image/png;base64,abc123']);
   assert.equal(await loadWetPaletteSnapshot(saveSystem), 'data:image/png;base64,abc123');
-  assert.equal(clearWetPaletteSnapshot(saveSystem), true);
+  assert.equal(await clearWetPaletteSnapshot(saveSystem), true);
   assert.deepEqual(writes.at(-1), ['delete']);
 
   assert.doesNotThrow(() => saveWetPaletteSnapshot({
@@ -149,6 +149,31 @@ test('wet palette storage helpers never throw when persistence is unavailable', 
       throw new Error('blocked');
     },
   }));
+});
+
+test('wet palette clear helper waits for the indexedDB delete request', async () => {
+  const { clearWetPaletteSnapshot } = loadWetPaletteHelpers();
+  const order = [];
+  let finishDelete;
+  const saveSystem = {
+    delete_wetPalette() {
+      order.push('delete-start');
+      return new Promise((resolve) => {
+        finishDelete = () => {
+          order.push('delete-finish');
+          resolve(true);
+        };
+      });
+    },
+  };
+
+  const clearPromise = clearWetPaletteSnapshot(saveSystem);
+
+  assert.equal(typeof clearPromise?.then, 'function');
+  assert.deepEqual(order, ['delete-start']);
+  finishDelete();
+  assert.equal(await clearPromise, true);
+  assert.deepEqual(order, ['delete-start', 'delete-finish']);
 });
 
 test('wet palette persistence uses the indexedDB save system instead of localStorage', () => {
@@ -183,5 +208,21 @@ test('wet palette restore ignores stale image loads after the palette is cleared
   context.instance._clearWetPaletteSnapshot();
   context.images[0].onload();
 
+  assert.deepEqual(context.calls, []);
+});
+
+test('wet palette restore aborts when the restore token changes during indexedDB load', async () => {
+  const context = loadWetPaletteMethodInstance();
+  let finishLoad;
+  context.instance.axpObj.saveSystem.load_wetPalette = () => new Promise((resolve) => {
+    finishLoad = () => resolve('data:image/png;base64,old');
+  });
+
+  const restorePromise = context.instance._restoreWetPaletteSnapshot();
+  context.instance._clearWetPaletteSnapshot();
+  finishLoad();
+  await restorePromise;
+
+  assert.equal(context.images.length, 0);
   assert.deepEqual(context.calls, []);
 });

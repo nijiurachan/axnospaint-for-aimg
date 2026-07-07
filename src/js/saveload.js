@@ -519,13 +519,11 @@ export class SaveSystem {
             return null;
         }
     }
-    delete_wetPalette() {
+    async delete_wetPalette() {
         if (!this.isDBAvailable) return false;
 
         try {
-            this.dbSystem.deleteFromDB(WET_PALETTE_SAVE_ID, STORE_NAME_CONFIG).catch((error) => {
-                console.log(error);
-            });
+            await this.dbSystem.deleteFromDB(WET_PALETTE_SAVE_ID, STORE_NAME_CONFIG);
             return true;
         } catch (error) {
             console.log(error);

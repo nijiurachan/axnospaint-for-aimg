@@ -46,10 +46,10 @@ export async function loadWetPaletteSnapshot(saveSystem) {
     }
 }
 
-export function clearWetPaletteSnapshot(saveSystem) {
+export async function clearWetPaletteSnapshot(saveSystem) {
     try {
         if (typeof saveSystem?.delete_wetPalette !== 'function') return false;
-        saveSystem.delete_wetPalette();
+        await saveSystem.delete_wetPalette();
         return true;
     } catch {
         return false;
@@ -295,9 +295,9 @@ export class ColorMakerSystem extends ToolWindow {
             canvas.addEventListener('lostpointercapture', endDrag);
         }
         // ボタン：ウェットパレットのクリア
-        document.getElementById('axp_makecolor_button_wetPaletteClear').addEventListener('click', () => {
+        document.getElementById('axp_makecolor_button_wetPaletteClear').addEventListener('click', async () => {
             this.wetPaletteCtx.clearRect(0, 0, this.wetPaletteCanvas.width, this.wetPaletteCanvas.height);
-            this._clearWetPaletteSnapshot();
+            await this._clearWetPaletteSnapshot();
         });
 
         // ボタン：スワップ
@@ -779,18 +779,19 @@ export class ColorMakerSystem extends ToolWindow {
         this._wetPaletteRestoreToken = (this._wetPaletteRestoreToken || 0) + 1;
         saveWetPaletteSnapshot(this.axpObj.saveSystem, this.wetPaletteCanvas);
     }
-    _clearWetPaletteSnapshot() {
+    async _clearWetPaletteSnapshot() {
         this._wetPaletteRestoreToken = (this._wetPaletteRestoreToken || 0) + 1;
-        clearWetPaletteSnapshot(this.axpObj.saveSystem);
+        return clearWetPaletteSnapshot(this.axpObj.saveSystem);
     }
     async restoreWetPaletteSnapshot() {
         await this._restoreWetPaletteSnapshot();
     }
     async _restoreWetPaletteSnapshot() {
+        const token = (this._wetPaletteRestoreToken = (this._wetPaletteRestoreToken || 0) + 1);
         const dataUrl = await loadWetPaletteSnapshot(this.axpObj.saveSystem);
+        if (token !== this._wetPaletteRestoreToken) return;
         if (!isValidWetPaletteDataUrl(dataUrl) || typeof Image === 'undefined') return;
 
-        const token = (this._wetPaletteRestoreToken = (this._wetPaletteRestoreToken || 0) + 1);
         const image = new Image();
         image.onload = () => {
             if (token !== this._wetPaletteRestoreToken) return;

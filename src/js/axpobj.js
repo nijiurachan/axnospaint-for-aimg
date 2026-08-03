@@ -108,6 +108,14 @@ export class AXPObj {
     // PenObj.write が lastEventInFrame=false で早期 return した場合に立つフラグ。
     // 最終イベントが stabilizer 等で弾かれた場合でも、pointermove 末尾で確実に commit するための保険。
     pendingPenFlush = false;
+    // calcScaleCoordinates が使う表示エリア(ELEMENT.view)の矩形キャッシュ。
+    // ストローク中のみ有効（pointerdownで取得、removeEventで破棄）。null なら都度実測する。
+    // ズーム・パン・回転はcanvas要素のstyleを動かすだけでviewの矩形を変えないため、
+    // ストローク中に再取得する必要がない。resize系では保険として破棄する。
+    viewRectCache = null;
+    // 座標表示(axp_config_form_displayPosition)が有効か。
+    // 毎pointermoveでDOMから設定値を読み直さないよう、起動時と設定変更時にキャッシュする。
+    isDisplayPosition = false;
     isLine;
     isRect;
     // ----------------------------------------------------
@@ -330,8 +338,13 @@ export class AXPObj {
     init() {
         //実際に表示されるキャンバス（ルーペによる拡大縮小が適用される）
         this.CANVAS.main = document.getElementById('axp_canvas_canvas_main');
-        this.CANVAS.main_ctx = this.CANVAS.main.getContext('2d', { willReadFrequently: true });
-        //this.CANVAS.main_ctx = this.CANVAS.main.getContext('2d');
+        // willReadFrequentlyは指定しない。
+        // mainは画面に出ているキャンバスで、fast pathの最終出力(window_layer.jsのdrawFast)が
+        // 毎pointermoveでフル解像度のdrawImageを行う書き込み専用の面である。
+        // CPU常駐面にするヒントを与えると、この転送がソフトウェアコピーになり、
+        // さらにコンポジタが毎フレーム再アップロードすることになる。
+        // 読み出しはスポイトの1x1と5x5(spuit.js)のみで、いずれもユーザー操作時に限られる。
+        this.CANVAS.main_ctx = this.CANVAS.main.getContext('2d');
 
         this.ELEMENT.base = document.getElementById('axp_canvas');
         this.ELEMENT.view = document.getElementById('axp_canvas_div_grayBackground');
@@ -424,6 +437,17 @@ export class AXPObj {
             }
         }, { passive: false });
 
+        // 表示エリア矩形キャッシュの破棄（保険）。
+        // 通常はストローク中にviewの矩形は変わらないが、iOSのURLバー開閉のように
+        // ポインタを下ろしたまま表示領域が変わる経路があるため、resize系で必ず捨てる。
+        const invalidateViewRect = () => { this.viewRectCache = null; };
+        window.addEventListener('resize', invalidateViewRect);
+        window.addEventListener('orientationchange', invalidateViewRect);
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', invalidateViewRect);
+            window.visualViewport.addEventListener('scroll', invalidateViewRect);
+        }
+
         // 描画領域を離れた時、ペンの太さガイドを非表示
         this.ELEMENT.base.addEventListener('pointerleave', () => { this.ELEMENT.cursor.style.visibility = 'hidden'; });
 
@@ -436,6 +460,9 @@ export class AXPObj {
 
             // モーダルウィンドウ表示中は無効
             if (this.isModalOpen) { return; }
+
+            // ストローク中の座標計算で使う表示エリア矩形をここで一度だけ実測しておく
+            this.viewRectCache = this.ELEMENT.view.getBoundingClientRect();
 
             // キャンバス座標計算
             let pos = this.calcScaleCoordinates(e);
@@ -647,27 +674,32 @@ export class AXPObj {
                     }
                 }
                 // 座標表示
-                // 座標の絶対値が1000以上の場合、表示形式を変える
-                let textDisplayPositon;
-                // 座標数値を文字列に書式変換
-                const formatPositon = (num) => {
-                    // -1000~1000にする
-                    let num0 = Math.max(Math.min(num, 1000), -1000);
-                    // 絶対値が1000ならNaN
-                    let str0 = (Math.abs(num0) < 1000) ? num0.toString() : 'NaN';
-                    // 桁揃え
-                    let str1 = ('    ' + str0).slice(-4);
-                    return str1;
-                };
-                // 直線または長方形描画中
-                if (this.isLine || this.isRect) {
-                    textDisplayPositon = `(${formatPositon(this.base_x)},${formatPositon(this.base_y)})→(${formatPositon(pos.x)},${formatPositon(pos.y)})`;
-                } else {
-                    textDisplayPositon = `(${formatPositon(pos.x)},${formatPositon(pos.y)})`;
-                }
+                // 設定が'off'（既定）のときは要素自体が非表示なので、
+                // 文字列の組み立てとDOM書き込みごとスキップする。
+                // ここは毎pointermoveを通る経路であり、直後のcoalescedループが
+                // calcScaleCoordinatesで矩形を読むため、DOMを汚さないことに意味がある。
+                if (this.isDisplayPosition) {
+                    // 座標の絶対値が1000以上の場合、表示形式を変える
+                    let textDisplayPositon;
+                    // 座標数値を文字列に書式変換
+                    const formatPositon = (num) => {
+                        // -1000~1000にする
+                        let num0 = Math.max(Math.min(num, 1000), -1000);
+                        // 絶対値が1000ならNaN
+                        let str0 = (Math.abs(num0) < 1000) ? num0.toString() : 'NaN';
+                        // 桁揃え
+                        let str1 = ('    ' + str0).slice(-4);
+                        return str1;
+                    };
+                    // 直線または長方形描画中
+                    if (this.isLine || this.isRect) {
+                        textDisplayPositon = `(${formatPositon(this.base_x)},${formatPositon(this.base_y)})→(${formatPositon(pos.x)},${formatPositon(pos.y)})`;
+                    } else {
+                        textDisplayPositon = `(${formatPositon(pos.x)},${formatPositon(pos.y)})`;
+                    }
 
-                // 座標表示
-                document.getElementById('axp_canvas_div_pointerPosition').textContent = textDisplayPositon;
+                    document.getElementById('axp_canvas_div_pointerPosition').textContent = textDisplayPositon;
+                }
                 // 機能呼び出し
                 // フレーム落ち時の中間点欠落を防ぐため、coalescedEvents があれば全て処理する
                 // （フレーム落ちが起きないライト負荷時は要素1つのみとなり挙動は従来と同等）
@@ -848,6 +880,8 @@ export class AXPObj {
                 // 機能呼び出し
                 this.penSystem.end(pos.x, pos.y, e);
             }
+            // ストローク終了。以降は都度実測に戻す
+            this.viewRectCache = null;
         };
         /**
         * ポインタが離された時の処理
@@ -1366,7 +1400,9 @@ export class AXPObj {
     calcScaleCoordinates(e) {
         // 回転表示に対応するため、キャンバス要素のgetBoundingClientRect（回転時は外接矩形になりズレる）に
         // 依存せず、非回転の表示エリア(view)中心を不動点として状態から逆算する。
-        const rectView = this.ELEMENT.view.getBoundingClientRect();
+        // ストローク中はキャッシュを使う。この関数はpointermoveのcoalescedループ内から
+        // 点数分呼ばれるため、都度getBoundingClientRectを読むと強制同期レイアウトが多発する。
+        const rectView = this.viewRectCache ?? this.ELEMENT.view.getBoundingClientRect();
         // ビューポート中心（回転のピボット）
         const vx = rectView.left + rectView.width / 2;
         const vy = rectView.top + rectView.height / 2;

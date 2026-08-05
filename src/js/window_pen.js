@@ -105,6 +105,12 @@ export class PenSystem extends ToolWindow {
         // undo base image on GPU
         this.CANVAS.undoBase = document.createElement('canvas');
         this.CANVAS.undoBase_ctx = this.CANVAS.undoBase.getContext('2d');
+        // fast path 専用のストローク合成キャンバス (undoBase + brush の合成先)。
+        // draw と違い willReadFrequently を付けず GPU 面に置く。CPU への読み出しは
+        // ストローク終了時 (end_common) の getImageData 1 回のみで、これにより
+        // ストローク中のコミットが CPU⇄GPU 転送なしで完結する。
+        this.CANVAS.fastStroke = document.createElement('canvas');
+        this.CANVAS.fastStroke_ctx = this.CANVAS.fastStroke.getContext('2d');
         // ペンの太さプレビューキャンバス
         this.CANVAS.pensize = document.getElementById('axp_pen_canvas_previewPenSize');
         this.CANVAS.pensize.width = 100;
@@ -172,10 +178,12 @@ export class PenSystem extends ToolWindow {
         this.CANVAS.draw.width = this.axpObj.x_size;
         this.CANVAS.brush.width = this.axpObj.x_size * this.axpObj.CONST.DRAW_MULTI;
         this.CANVAS.undoBase.width = this.axpObj.x_size;
+        this.CANVAS.fastStroke.width = this.axpObj.x_size;
 
         this.CANVAS.draw.height = this.axpObj.y_size;
         this.CANVAS.brush.height = this.axpObj.y_size * this.axpObj.CONST.DRAW_MULTI;
         this.CANVAS.undoBase.height = this.axpObj.y_size;
+        this.CANVAS.fastStroke.height = this.axpObj.y_size;
     }
     // ペンツール変更（メインボタン）
     switchMainButton(element, caller = null) {

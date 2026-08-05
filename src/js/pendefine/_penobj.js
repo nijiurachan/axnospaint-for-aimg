@@ -15,6 +15,13 @@ export class PenObj {
         this.drawmode = null;
         this.isLastDrawing = false;
         this.input_position = [];
+        // fast path のダーティ矩形コミットに対応したペンか (StampPenBase 系が true にする)。
+        // 対応ペンは _drawStamp/_drawSegment 等で _markDirty を呼び、描いた範囲を申告する。
+        this.dirtyTracking = false;
+        // 前回コミット以降にブラシへ描かれた範囲。null=描画なし、true=全面
+        this.frameDirty = null;
+        // rAF による中間コミットの予約中フラグ (多重予約防止)
+        this._fastCommitScheduled = false;
         // 値
         this.name = null
         this.type = null;
@@ -234,19 +241,26 @@ export class PenObj {
         }
         this.axpObj.pendingPenFlush = false;
         if (this.axpObj.layerSystem.compositeFastPathActive) {
-            // GPU fast path: restore base via drawImage (GPU→GPU) instead of putImageData
-            const savedOp = this.CANVAS.draw_ctx.globalCompositeOperation;
-            const savedAlpha = this.CANVAS.draw_ctx.globalAlpha;
-            const savedShadowBlur = this.CANVAS.draw_ctx.shadowBlur;
-            this.CANVAS.draw_ctx.globalCompositeOperation = 'copy';
-            this.CANVAS.draw_ctx.globalAlpha = 1;
-            this.CANVAS.draw_ctx.shadowBlur = 0;
-            this.CANVAS.draw_ctx.drawImage(this.CANVAS.undoBase, 0, 0);
-            this.CANVAS.draw_ctx.globalCompositeOperation = savedOp;
-            this.CANVAS.draw_ctx.globalAlpha = savedAlpha;
-            this.CANVAS.draw_ctx.shadowBlur = savedShadowBlur;
-            this.CANVAS.draw_ctx.drawImage(this.CANVAS.brush, 0, 0);
-            this.axpObj.layerSystem.drawFast();
+            // 中間コミットは rAF に整流する。pointermove が表示フレームより高頻度に
+            // 届く環境 (iPad + Apple Pencil 等) では、画面に反映されないコミットを
+            // 捨てるため。ブラシへの蓄積は毎イベント行われており、点は落ちない。
+            // 終端 (isLastDrawing) は直後に end_common がストローク結果を読むため
+            // 同期のまま。ダーティ矩形非対応ペンも挙動を変えず従来どおり同期とする。
+            if (this.dirtyTracking && !this.isLastDrawing) {
+                if (!this._fastCommitScheduled) {
+                    this._fastCommitScheduled = true;
+                    requestAnimationFrame(() => {
+                        this._fastCommitScheduled = false;
+                        // 発火前にストロークが終了/キャンセルされていた場合は、
+                        // 終端側の同期コミットが清算済みのため何もしない
+                        if (!this.axpObj.layerSystem.compositeFastPathActive) return;
+                        if (this.axpObj.isDrawCancel) return;
+                        this._commitFastPath();
+                    });
+                }
+            } else {
+                this._commitFastPath();
+            }
         } else {
             this.CANVAS.draw_ctx.putImageData(this.axpObj.layerSystem.load(), 0, 0);
             this.CANVAS.draw_ctx.drawImage(this.CANVAS.brush, 0, 0);
@@ -256,12 +270,114 @@ export class PenObj {
             this.axpObj.layerSystem.updateCanvas(this.axpObj.layerSystem.getId());
         }
     }
+    // fast path のコミット: undoBase 復元 + ブラシ合成 + 画面再合成。
+    // ダーティ矩形対応ペン (dirtyTracking) の中間コミットは、前回コミット以降に
+    // ブラシへ描かれた範囲だけを処理する。ストローク終端 (isLastDrawing) は、
+    // 矩形境界に生じうる微小なぼかし欠けを清算するため必ず全面でコミットし、
+    // レイヤーへ書き戻される最終結果を従来の全面コミットと一致させる。
+    _commitFastPath() {
+        let rect = null; // null = 全面コミット
+        if (this.dirtyTracking) {
+            const dirty = this._consumeFrameDirty();
+            if (!this.isLastDrawing) {
+                if (dirty === null) {
+                    // 前回コミット以降なにも描かれていない (手ブレ補正の棄却など)
+                    return;
+                }
+                rect = this._dirtyToCommitRect(dirty);
+                if (rect !== null && (rect.w <= 0 || rect.h <= 0)) {
+                    // 描画範囲全体がキャンバス外
+                    return;
+                }
+            }
+        }
+        // 合成先は fast path 専用の GPU 面 fastStroke。draw (CPU面,
+        // willReadFrequently) は slow path 専用に残し、ストローク中の
+        // CPU⇄GPU 転送を排除する。ペンの合成状態 (合成モード・不透明度・
+        // ぼかし) は init_brush が draw_ctx に設定しているため、そこから
+        // 読み取って fastStroke_ctx に適用する。
+        const pctx = this.CANVAS.draw_ctx;
+        const sctx = this.CANVAS.fastStroke_ctx;
+        if (rect === null) {
+            // GPU fast path: restore base via drawImage (GPU→GPU) instead of putImageData
+            sctx.globalCompositeOperation = 'copy';
+            sctx.globalAlpha = 1;
+            sctx.shadowBlur = 0;
+            sctx.drawImage(this.CANVAS.undoBase, 0, 0);
+        } else {
+            // 矩形コミット: 'copy' は描画範囲外を透明化するため矩形とは併用できない。
+            // clearRect + source-over の矩形版で同じ復元結果を得る。
+            sctx.globalCompositeOperation = 'source-over';
+            sctx.globalAlpha = 1;
+            sctx.shadowBlur = 0;
+            sctx.clearRect(rect.x, rect.y, rect.w, rect.h);
+            sctx.drawImage(this.CANVAS.undoBase,
+                rect.x, rect.y, rect.w, rect.h, rect.x, rect.y, rect.w, rect.h);
+        }
+        sctx.globalCompositeOperation = pctx.globalCompositeOperation;
+        sctx.globalAlpha = pctx.globalAlpha;
+        sctx.shadowColor = pctx.shadowColor;
+        sctx.shadowBlur = pctx.shadowBlur;
+        sctx.shadowOffsetX = 0;
+        sctx.shadowOffsetY = 0;
+        if (rect === null) {
+            sctx.drawImage(this.CANVAS.brush, 0, 0);
+            this.axpObj.layerSystem.drawFast();
+        } else {
+            sctx.drawImage(this.CANVAS.brush,
+                rect.x, rect.y, rect.w, rect.h, rect.x, rect.y, rect.w, rect.h);
+            this.axpObj.layerSystem.drawFast(rect);
+        }
+    }
+    // ── ダーティ矩形の追跡 (fast path 用) ─────────────────
+    // ストローク開始時にリセットする
+    _resetDirty() {
+        this.frameDirty = null;
+    }
+    // ブラシへ描いた範囲を記録する (キャンバス座標・小数可)
+    _markDirty(x0, y0, x1, y1) {
+        const d = this.frameDirty;
+        if (d === true) return;
+        if (d === null) {
+            this.frameDirty = { x0, y0, x1, y1 };
+        } else {
+            if (x0 < d.x0) d.x0 = x0;
+            if (y0 < d.y0) d.y0 = y0;
+            if (x1 > d.x1) d.x1 = x1;
+            if (y1 > d.y1) d.y1 = y1;
+        }
+    }
+    // 全面を再コミット対象にする (ブラシ全消去を伴う描画モード用)
+    _markDirtyAll() {
+        this.frameDirty = true;
+    }
+    _consumeFrameDirty() {
+        const d = this.frameDirty;
+        this.frameDirty = null;
+        return d;
+    }
+    // 記録範囲 → コミット矩形。ぼかしのにじみ幅をパディングし、キャンバスにクランプする。
+    // 全面フラグ、またはぼかしが強い場合は null (全面コミット) を返す。
+    // ぼかしが強いときに矩形で切り出すと、矩形外ジオメトリのぼかし寄与が境界で
+    // 欠けて継ぎ目になり得るため、全面に倒して安全側とする。
+    _dirtyToCommitRect(dirty) {
+        const blur = this.CANVAS.draw_ctx.shadowBlur;
+        if (dirty === true || blur > 2) return null;
+        const pad = Math.ceil(blur * 2 + 2);
+        const x = Math.max(0, Math.floor(dirty.x0 - pad));
+        const y = Math.max(0, Math.floor(dirty.y0 - pad));
+        const x2 = Math.min(this.axpObj.x_size, Math.ceil(dirty.x1 + pad));
+        const y2 = Math.min(this.axpObj.y_size, Math.ceil(dirty.y1 + pad));
+        return { x, y, w: x2 - x, h: y2 - y };
+    }
     // 描画終了 - 共通処理
     end_common() {
         if (this.axpObj.layerSystem.isStrokeActive) {
             if (this.axpObj.layerSystem.compositeFastPathActive && !this.axpObj.isDrawCancel) {
+                // fast path のストローク結果は fastStroke に合成されている。
+                // GPU からの読み戻しになるが、ストローク終了時の 1 回のみ
                 this.axpObj.layerSystem.write(
-                    this.CANVAS.draw_ctx.getImageData(0, 0, this.axpObj.x_size, this.axpObj.y_size)
+                    this.CANVAS.fastStroke_ctx.getImageData(0, 0, this.axpObj.x_size, this.axpObj.y_size)
                 );
             }
             this.axpObj.layerSystem.isStrokeActive = false;

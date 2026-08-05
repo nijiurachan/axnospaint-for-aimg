@@ -1479,45 +1479,55 @@ export class LayerSystem extends ToolWindow {
             this.CANVAS.compositeAboveCtx,
             0, currentIdx - 1
         );
-        this.strokeCanvas = this.axpObj.penSystem.CANVAS.draw;
+        // ストローク合成は fast path 専用の GPU 面 (fastStroke) で行う。
+        // draw (willReadFrequently=CPU面) を使うと毎コミットに CPU⇄GPU 転送が生じる
+        this.strokeCanvas = this.axpObj.penSystem.CANVAS.fastStroke;
         this.compositeFastPathActive = true;
     }
     deactivateFastPath() {
         this.compositeFastPathActive = false;
         this.strokeCanvas = null;
     }
-    drawFast() {
+    // ストローク中の画面再合成。
+    // dirty ({x, y, w, h}) 指定時はその矩形だけを再合成する。矩形外は前回コミットの
+    // 結果が backscreen / main に残っており、内容が同一であることを呼び出し側
+    // (PenObj._commitFastPath) が保証する。省略時は従来どおり全面。
+    drawFast(dirty = null) {
         const currentIdx = this.getLayerIndex(this.currentLayer.dataset.id);
         const item = this.layerObj[currentIdx];
+        const dx = dirty ? dirty.x : 0;
+        const dy = dirty ? dirty.y : 0;
+        const dw = dirty ? dirty.w : this.x_size;
+        const dh = dirty ? dirty.h : this.y_size;
 
         this.CANVAS.backscreen_trans_ctx.beginPath();
-        this.CANVAS.backscreen_trans_ctx.clearRect(0, 0, this.x_size, this.y_size);
+        this.CANVAS.backscreen_trans_ctx.clearRect(dx, dy, dw, dh);
 
         this.CANVAS.backscreen_trans_ctx.globalCompositeOperation = 'source-over';
         this.CANVAS.backscreen_trans_ctx.globalAlpha = 1;
-        this.CANVAS.backscreen_trans_ctx.drawImage(this.CANVAS.compositeBelow, 0, 0);
+        this.CANVAS.backscreen_trans_ctx.drawImage(this.CANVAS.compositeBelow, dx, dy, dw, dh, dx, dy, dw, dh);
 
         this.CANVAS.backscreen_trans_ctx.globalCompositeOperation = item.mode;
         this.CANVAS.backscreen_trans_ctx.globalAlpha = item.alpha / 100;
-        this.CANVAS.backscreen_trans_ctx.drawImage(this.strokeCanvas, 0, 0);
+        this.CANVAS.backscreen_trans_ctx.drawImage(this.strokeCanvas, dx, dy, dw, dh, dx, dy, dw, dh);
 
         this.CANVAS.backscreen_trans_ctx.globalCompositeOperation = 'source-over';
         this.CANVAS.backscreen_trans_ctx.globalAlpha = 1;
-        this.CANVAS.backscreen_trans_ctx.drawImage(this.CANVAS.compositeAbove, 0, 0);
+        this.CANVAS.backscreen_trans_ctx.drawImage(this.CANVAS.compositeAbove, dx, dy, dw, dh, dx, dy, dw, dh);
 
         this.CANVAS.backscreen_white_ctx.beginPath();
-        this.CANVAS.backscreen_white_ctx.clearRect(0, 0, this.x_size, this.y_size);
+        this.CANVAS.backscreen_white_ctx.clearRect(dx, dy, dw, dh);
         this.CANVAS.backscreen_white_ctx.globalAlpha = 1;
         this.CANVAS.backscreen_white_ctx.fillStyle = this.axpObj.defaultColor?.sub || '#FFFFFF';
-        this.CANVAS.backscreen_white_ctx.fillRect(0, 0, this.x_size, this.y_size);
-        this.CANVAS.backscreen_white_ctx.drawImage(this.CANVAS.backscreen_trans, 0, 0);
+        this.CANVAS.backscreen_white_ctx.fillRect(dx, dy, dw, dh);
+        this.CANVAS.backscreen_white_ctx.drawImage(this.CANVAS.backscreen_trans, dx, dy, dw, dh, dx, dy, dw, dh);
 
         let ctx = this.axpObj.CANVAS.main_ctx;
         if (this.axpObj.assistToolSystem.getIsTransparent()) {
-            ctx.clearRect(0, 0, this.x_size, this.y_size);
-            ctx.drawImage(this.CANVAS.backscreen_trans, 0, 0);
+            ctx.clearRect(dx, dy, dw, dh);
+            ctx.drawImage(this.CANVAS.backscreen_trans, dx, dy, dw, dh, dx, dy, dw, dh);
         } else {
-            ctx.drawImage(this.CANVAS.backscreen_white, 0, 0);
+            ctx.drawImage(this.CANVAS.backscreen_white, dx, dy, dw, dh, dx, dy, dw, dh);
         }
     }
     draw(changedLayerId = null) {

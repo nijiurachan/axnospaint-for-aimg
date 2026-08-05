@@ -17,6 +17,10 @@ export class StampPenBase extends DrawingPenBase {
         this.subPxFloor = 0.5; // サブピクセル幅の形状下限
         this._activeRadiusXform = null; // _drawPointSequence 内で一時設定される半径変換
         this.useSubPxAlpha = true; // 極細時に半透明化 (false = 常に不透明)
+        // fast path のダーティ矩形コミットを有効化。
+        // スタンプ系の描画は _drawStamp / _drawSegment に集約されており、
+        // その両方 (subclass の override 含む) が _markDirty で範囲を申告する。
+        this.dirtyTracking = true;
         // 終端ハライ/ハネ (速度依存・筆圧テーパー)。筆圧ペンのみ有効。具体ペンで上書き可。
         this.flickTaper = {
             enabled: true,
@@ -168,6 +172,7 @@ export class StampPenBase extends DrawingPenBase {
         const rTrue = this._radiusAt(cp);
         if (rTrue <= 0) return;
         const r = Math.max(rTrue, this.subPxFloor);
+        this._markDirty(cp.x - r, cp.y - r, cp.x + r, cp.y + r);
         const alphaScale = this._subPxAlpha(rTrue);
         const ctx = this.CANVAS.brush_ctx;
         const saved = ctx.globalAlpha;
@@ -191,6 +196,13 @@ export class StampPenBase extends DrawingPenBase {
         // サブピクセル幅対応: 形状は >= subPxFloor にクランプ、不透明度で減衰
         const r1 = Math.max(r1True, this.subPxFloor);
         const r2 = Math.max(r2True, this.subPxFloor);
+        // この区間が触れうる範囲 (両端円の外接矩形。接線ポリゴンはこの内側に収まる)
+        this._markDirty(
+            Math.min(p1.x - r1, p2.x - r2),
+            Math.min(p1.y - r1, p2.y - r2),
+            Math.max(p1.x + r1, p2.x + r2),
+            Math.max(p1.y + r1, p2.y + r2),
+        );
         const segAlpha = (this._subPxAlpha(r1True) + this._subPxAlpha(r2True)) / 2;
         const dx = p2.x - p1.x;
         const dy = p2.y - p1.y;
@@ -239,6 +251,8 @@ export class StampPenBase extends DrawingPenBase {
 
     // RECT / CIRCLE / 直線モード: 毎フレーム全体を再描画
     _drawShapeFull() {
+        // ブラシ全消去を伴うため、前回コミットの図形を消すには全面コミットが必要
+        this._markDirtyAll();
         const ctx = this.CANVAS.brush_ctx;
         ctx.globalCompositeOperation = 'source-over';
         ctx.clearRect(0, 0, this.axpObj.x_size, this.axpObj.y_size);

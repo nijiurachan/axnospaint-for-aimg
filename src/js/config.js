@@ -1466,7 +1466,11 @@ export class ConfigSystem {
     // 座標表示
     set_display_position() {
         const targetElement = document.getElementById('axp_canvas_div_pointerPosition');
-        switch (this.axpObj.config('axp_config_form_displayPosition')) {
+        const mode = this.axpObj.config('axp_config_form_displayPosition');
+        // pointermoveハンドラが毎イベントここの設定値を読み直さずに済むようフラグ化しておく。
+        // 既定は'off'であり、その場合は座標文字列の組み立てとDOM書き込みごとスキップできる。
+        this.axpObj.isDisplayPosition = (mode !== 'off');
+        switch (mode) {
             case 'off':
                 // 表示しない
                 UTIL.hide(targetElement);

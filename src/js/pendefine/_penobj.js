@@ -291,34 +291,41 @@ export class PenObj {
                 }
             }
         }
-        const dctx = this.CANVAS.draw_ctx;
-        const savedOp = dctx.globalCompositeOperation;
-        const savedAlpha = dctx.globalAlpha;
-        const savedShadowBlur = dctx.shadowBlur;
+        // 合成先は fast path 専用の GPU 面 fastStroke。draw (CPU面,
+        // willReadFrequently) は slow path 専用に残し、ストローク中の
+        // CPU⇄GPU 転送を排除する。ペンの合成状態 (合成モード・不透明度・
+        // ぼかし) は init_brush が draw_ctx に設定しているため、そこから
+        // 読み取って fastStroke_ctx に適用する。
+        const pctx = this.CANVAS.draw_ctx;
+        const sctx = this.CANVAS.fastStroke_ctx;
         if (rect === null) {
             // GPU fast path: restore base via drawImage (GPU→GPU) instead of putImageData
-            dctx.globalCompositeOperation = 'copy';
-            dctx.globalAlpha = 1;
-            dctx.shadowBlur = 0;
-            dctx.drawImage(this.CANVAS.undoBase, 0, 0);
-            dctx.globalCompositeOperation = savedOp;
-            dctx.globalAlpha = savedAlpha;
-            dctx.shadowBlur = savedShadowBlur;
-            dctx.drawImage(this.CANVAS.brush, 0, 0);
-            this.axpObj.layerSystem.drawFast();
+            sctx.globalCompositeOperation = 'copy';
+            sctx.globalAlpha = 1;
+            sctx.shadowBlur = 0;
+            sctx.drawImage(this.CANVAS.undoBase, 0, 0);
         } else {
             // 矩形コミット: 'copy' は描画範囲外を透明化するため矩形とは併用できない。
             // clearRect + source-over の矩形版で同じ復元結果を得る。
-            const { x, y, w, h } = rect;
-            dctx.globalCompositeOperation = 'source-over';
-            dctx.globalAlpha = 1;
-            dctx.shadowBlur = 0;
-            dctx.clearRect(x, y, w, h);
-            dctx.drawImage(this.CANVAS.undoBase, x, y, w, h, x, y, w, h);
-            dctx.globalCompositeOperation = savedOp;
-            dctx.globalAlpha = savedAlpha;
-            dctx.shadowBlur = savedShadowBlur;
-            dctx.drawImage(this.CANVAS.brush, x, y, w, h, x, y, w, h);
+            sctx.globalCompositeOperation = 'source-over';
+            sctx.globalAlpha = 1;
+            sctx.shadowBlur = 0;
+            sctx.clearRect(rect.x, rect.y, rect.w, rect.h);
+            sctx.drawImage(this.CANVAS.undoBase,
+                rect.x, rect.y, rect.w, rect.h, rect.x, rect.y, rect.w, rect.h);
+        }
+        sctx.globalCompositeOperation = pctx.globalCompositeOperation;
+        sctx.globalAlpha = pctx.globalAlpha;
+        sctx.shadowColor = pctx.shadowColor;
+        sctx.shadowBlur = pctx.shadowBlur;
+        sctx.shadowOffsetX = 0;
+        sctx.shadowOffsetY = 0;
+        if (rect === null) {
+            sctx.drawImage(this.CANVAS.brush, 0, 0);
+            this.axpObj.layerSystem.drawFast();
+        } else {
+            sctx.drawImage(this.CANVAS.brush,
+                rect.x, rect.y, rect.w, rect.h, rect.x, rect.y, rect.w, rect.h);
             this.axpObj.layerSystem.drawFast(rect);
         }
     }
@@ -367,8 +374,10 @@ export class PenObj {
     end_common() {
         if (this.axpObj.layerSystem.isStrokeActive) {
             if (this.axpObj.layerSystem.compositeFastPathActive && !this.axpObj.isDrawCancel) {
+                // fast path のストローク結果は fastStroke に合成されている。
+                // GPU からの読み戻しになるが、ストローク終了時の 1 回のみ
                 this.axpObj.layerSystem.write(
-                    this.CANVAS.draw_ctx.getImageData(0, 0, this.axpObj.x_size, this.axpObj.y_size)
+                    this.CANVAS.fastStroke_ctx.getImageData(0, 0, this.axpObj.x_size, this.axpObj.y_size)
                 );
             }
             this.axpObj.layerSystem.isStrokeActive = false;

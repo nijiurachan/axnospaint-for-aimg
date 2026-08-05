@@ -1479,7 +1479,9 @@ export class LayerSystem extends ToolWindow {
             this.CANVAS.compositeAboveCtx,
             0, currentIdx - 1
         );
-        this.strokeCanvas = this.axpObj.penSystem.CANVAS.draw;
+        // ストローク合成は fast path 専用の GPU 面 (fastStroke) で行う。
+        // draw (willReadFrequently=CPU面) を使うと毎コミットに CPU⇄GPU 転送が生じる
+        this.strokeCanvas = this.axpObj.penSystem.CANVAS.fastStroke;
         this.compositeFastPathActive = true;
     }
     deactivateFastPath() {

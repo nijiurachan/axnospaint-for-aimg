@@ -20,6 +20,8 @@ export class PenObj {
         this.dirtyTracking = false;
         // 前回コミット以降にブラシへ描かれた範囲。null=描画なし、true=全面
         this.frameDirty = null;
+        // rAF による中間コミットの予約中フラグ (多重予約防止)
+        this._fastCommitScheduled = false;
         // 値
         this.name = null
         this.type = null;
@@ -239,7 +241,26 @@ export class PenObj {
         }
         this.axpObj.pendingPenFlush = false;
         if (this.axpObj.layerSystem.compositeFastPathActive) {
-            this._commitFastPath();
+            // 中間コミットは rAF に整流する。pointermove が表示フレームより高頻度に
+            // 届く環境 (iPad + Apple Pencil 等) では、画面に反映されないコミットを
+            // 捨てるため。ブラシへの蓄積は毎イベント行われており、点は落ちない。
+            // 終端 (isLastDrawing) は直後に end_common がストローク結果を読むため
+            // 同期のまま。ダーティ矩形非対応ペンも挙動を変えず従来どおり同期とする。
+            if (this.dirtyTracking && !this.isLastDrawing) {
+                if (!this._fastCommitScheduled) {
+                    this._fastCommitScheduled = true;
+                    requestAnimationFrame(() => {
+                        this._fastCommitScheduled = false;
+                        // 発火前にストロークが終了/キャンセルされていた場合は、
+                        // 終端側の同期コミットが清算済みのため何もしない
+                        if (!this.axpObj.layerSystem.compositeFastPathActive) return;
+                        if (this.axpObj.isDrawCancel) return;
+                        this._commitFastPath();
+                    });
+                }
+            } else {
+                this._commitFastPath();
+            }
         } else {
             this.CANVAS.draw_ctx.putImageData(this.axpObj.layerSystem.load(), 0, 0);
             this.CANVAS.draw_ctx.drawImage(this.CANVAS.brush, 0, 0);

@@ -31,6 +31,7 @@ export class Square extends StampPenBase {
         const rTrue = this._halfWidth();
         if (rTrue <= 0) return;
         const r = Math.max(rTrue, this.subPxFloor);
+        this._markDirty(cp.x - r, cp.y - r, cp.x + r, cp.y + r);
         const alphaScale = this._subPxAlpha(rTrue);
         const ctx = this.CANVAS.brush_ctx;
         const saved = ctx.globalAlpha;
@@ -48,6 +49,13 @@ export class Square extends StampPenBase {
         const rTrue = this._halfWidth();
         if (rTrue <= 0) return;
         const r = Math.max(rTrue, this.subPxFloor);
+        // この区間が触れうる範囲 (6角形は両端正方形の外接矩形に収まる)
+        this._markDirty(
+            Math.min(p1.x, p2.x) - r,
+            Math.min(p1.y, p2.y) - r,
+            Math.max(p1.x, p2.x) + r,
+            Math.max(p1.y, p2.y) + r,
+        );
         const alphaScale = this._subPxAlpha(rTrue);
 
         const dx = p2.x - p1.x;

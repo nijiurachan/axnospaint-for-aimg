@@ -94,6 +94,8 @@ export class DrawingPenBase extends PenObj {
         this.axpObj.layerSystem.save();
         this.axpObj.layerSystem.isStrokeActive = true;
         this.axpObj.layerSystem.activateFastPath();
+        // ダーティ矩形をリセット (以降 start_draw の初回スタンプから記録が始まる)
+        this._resetDirty();
         if (this.axpObj.layerSystem.compositeFastPathActive) {
             this.CANVAS.undoBase_ctx.putImageData(this.axpObj.layerSystem.load(), 0, 0);
         }

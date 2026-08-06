@@ -585,6 +585,16 @@
                     <br>
                     ※ 本バージョンはあいもげ用にカスタマイズしたものです。質問・バグ報告・要望は、ニコニコ大百科でなくGitHubまでお願いします。
                 </div>
+                <div class="axpc_config_group" data-title="全設定のインポート・エクスポート">
+                    設定タブの全項目・ツールウィンドウの位置・ペンの設定値・ショートカット・カラーパレットを、まとめて１つのファイルに保存／復元します。
+                    <br>
+                    <button id="axp_config_button_saveAllConfig" class="axpc_MSG axpc_button axpc_button_width260"
+                        data-msg="@CFG0500">設定ファイルに保存</button>
+                    <br>
+                    <button id="axp_config_button_loadAllConfig" class="axpc_MSG axpc_button axpc_button_width260"
+                        data-msg="@CFG0501">設定ファイルの読込</button>
+                    <input type="file" id="axp_config_file_loadAllConfig" accept=".json" style="display: none;">
+                </div>
                 <div class="axpc_config_group" data-title="デバッグ情報表示">
                     <details>
                         <summary><span style="color:#f00"><b>※不具合発生時の動作検証用です。通常時は使用しないでください。</b></span></summary>

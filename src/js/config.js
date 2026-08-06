@@ -68,6 +68,60 @@ const objKeyFunction = [
 
 const mapFunction = new Map();
 
+// 全設定ファイル（json）の識別子と書式バージョン
+// ※書式バージョンは互換性が失われる変更を行った場合のみ上げる。
+//   設定項目を追加しただけの場合は、未知のキーが復元時に破棄されるため上げる必要はない。
+const CONFIG_FILE_MAGIC = 'AXNOSPaintCONFIG';
+const CONFIG_FILE_FORMAT_VERSION = 1;
+
+// コンフィグ値の型定義（接頭辞 → 期待する型）
+// 復元処理(restoreConfig)の前段で照合し、型の合わない値を破棄することでクラッシュを防ぐ。
+// 設定ファイルのインポートにより外部から任意の値が渡りうるため、この照合は必須。
+// ※新しい接頭辞を追加する場合は、ここにも追記すること（未登録の接頭辞は無効データとして破棄される）
+// ※厳密な検証が目的ではなくクラッシュ防止が目的のため、判断に迷う場合は 'any' とする
+const CONFIG_VALUE_TYPE = {
+    // 文字列と数値のどちらもありうる（保存元により異なる）
+    RANGE: 'any',
+    VALUE: 'any',
+    CHECK: 'boolean',
+    RADIO: 'string',
+    TOGSW: 'boolean',
+    SELCT: 'string',
+    // value.substring() を行うため文字列であることが必須
+    GRIDC: 'string',
+    // value.split(',') を行うため文字列であることが必須
+    CFUNC: 'string',
+    WDPOS: 'string',
+    WDMIN: 'boolean',
+    // ペンツールの各種値（旧データに 'true'/'false' の文字列が含まれうるため 'any'）
+    'P-SIZ': 'any', 'P-ALP': 'any', 'P-THR': 'any', 'P-BLU': 'any',
+    'P-TON': 'any', 'P-DEG': 'any', 'P-RAD': 'any', 'P-HRD': 'any',
+    'P-DIF': 'any', 'P-DRG': 'any', 'P-USP': 'any', 'P-SPA': 'any',
+    QSIZE: 'any',
+    // DPRST_<n>は文字列(json)、DPRST_openは真偽値
+    DPRST: 'any',
+    SCALE: 'array',
+    CHIST: 'array',
+    PLTCO: 'number',
+    COTAG: 'array',
+};
+
+// コンフィグ値が期待する型と一致するか判定する
+function isValidConfigType(dataType, value) {
+    const expectType = CONFIG_VALUE_TYPE[dataType];
+    if (expectType === undefined) {
+        // 未知の接頭辞
+        return false;
+    }
+    if (expectType === 'any') {
+        return true;
+    }
+    if (expectType === 'array') {
+        return Array.isArray(value);
+    }
+    return typeof value === expectType;
+}
+
 // 設定機能制御オブジェクト
 export class ConfigSystem {
     axpObj;
@@ -388,6 +442,10 @@ export class ConfigSystem {
                         this.saveConfig(`VALUE_${e.target.id}`, value);
                         break;
                     }
+                    case 'select-one':
+                        // セレクトボックス
+                        this.saveConfig(`SELCT_${e.currentTarget.id}`, e.target.value);
+                        break;
                 }
             })
         };
@@ -1134,6 +1192,87 @@ export class ConfigSystem {
                     // 処理なし
                 });
         }
+        // 全設定のファイル保存
+        document.getElementById('axp_config_button_saveAllConfig').addEventListener('click', () => {
+            // 一度も変更していない項目（＝コンフィグオブジェクトに未登録の初期値）もファイルに含める
+            // ※コンフィグオブジェクト自体は変更しない
+            const exportMap = new Map(this.configObj);
+            this.collectConfigFromDOM(exportMap);
+            const saveObj = {
+                name: CONFIG_FILE_MAGIC,
+                formatVersion: CONFIG_FILE_FORMAT_VERSION,
+                appVersion: PACKAGE_VERSION,
+                exportedAt: new Date().toISOString(),
+                // Mapはそのままではjson化できないため、プレーンオブジェクトに変換する
+                // ※設定値は全てこのMapに集約されているため、設定項目が増えてもここへの追記は不要
+                config: Object.fromEntries(exportMap),
+                // カラーパレットはコンフィグオブジェクトとは別のストアに保存されているため、個別に出力する
+                palette: {
+                    column: this.axpObj.colorPaletteSystem.currentPalette.column,
+                    colors: [...this.axpObj.colorPaletteSystem.currentPalette.palette],
+                },
+            };
+            const filename = "ap_config" + dispDate(new Date(), 'YYYYMMDD_hhmmss') + ".json";
+            const blob = new Blob([JSON.stringify(saveObj, null, 2)], { type: 'application/json' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.href = url;
+            link.download = filename;
+            link.click();
+            // 使い終わったオブジェクトURLを解放する
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        });
+        // 全設定のファイル読込
+        document.getElementById('axp_config_button_loadAllConfig').onclick = () => {
+            // ２度同じファイルを選択したとき、onchangeが発火しない不具合を回避するため値を初期化する
+            document.getElementById('axp_config_file_loadAllConfig').value = '';
+            // ファイルオープンダイアログを開く
+            document.getElementById('axp_config_file_loadAllConfig').click();
+        }
+        //ダイアログでファイルが選択された時
+        document.getElementById('axp_config_file_loadAllConfig').onchange = (e) => {
+            const file = e.target.files;
+            // ファイルが選択されていない場合（キャンセル）
+            if (file.length === 0) return;
+            const reader = new FileReader();
+            reader.readAsText(file[0]);
+            reader.onload = () => {
+                let json;
+                try {
+                    json = JSON.parse(reader.result);
+                } catch {
+                    alert('AXNOS Paintの設定ファイルではありません。');
+                    return;
+                }
+                if (json === null || typeof json !== 'object'
+                    || json.name !== CONFIG_FILE_MAGIC
+                    || json.config === null || typeof json.config !== 'object'
+                    || Array.isArray(json.config)) {
+                    alert('AXNOS Paintの設定ファイルではありません。');
+                    return;
+                }
+                if (Number(json.formatVersion) > CONFIG_FILE_FORMAT_VERSION) {
+                    alert('この設定ファイルは、より新しいバージョンのAXNOS Paintで作成されています。\n読み込むことができません。');
+                    return;
+                }
+                // 確認ダイアログ表示
+                confirmExPromise('設定ファイルを読み込み、全ての設定を上書きします。\nよろしいですか？\n（※この処理はアンドゥできません）')
+                    .then(() => {
+                        // ※OK時の処理
+                        // ここで発生した例外はキャンセル用のcatchに吸収され無言で失われるため、この場で処理する
+                        try {
+                            this.importAllConfig(json);
+                        } catch (error) {
+                            console.log(error);
+                            alert(`エラー：設定ファイルの読み込みに失敗しました。\n${error}`);
+                        }
+                    })
+                    .catch(() => {
+                        // ※Cancel時の処理
+                        // 処理なし
+                    });
+            }
+        }
         // デバッグ情報表示チェックボックス
         document.getElementById('axp_config_checkbox_useDebugMode').onchange = (e) => {
             this.axpObj.debugLog.isDebugMode = e.target.checked;
@@ -1540,6 +1679,111 @@ export class ConfigSystem {
     getConfig(key) {
         return this.configObj.get(key);
     }
+    // 画面上の設定項目('axpc_SAVE'指定の要素)のうち、対象のMapに存在しないものを現在の値で補う
+    // ・エクスポート時：一度も変更していない項目（＝Mapに未登録の初期値）もファイルに含めるために使用する
+    // ・インポート時  ：ファイルに含まれていなかった項目の値が、画面表示と食い違ったまま保存されるのを防ぐために使用する
+    // ※値の取得規則は、値変更時の保存処理(startEvent内)と同一に保つこと
+    collectConfigFromDOM(target = this.configObj) {
+        const elems_config = document.getElementsByClassName('axpc_SAVE');
+        for (const item of elems_config) {
+            let key;
+            let value;
+            switch (item.type) {
+                case 'range':
+                    key = `RANGE_${item.id}`;
+                    value = item.value;
+                    break;
+                case 'checkbox':
+                    key = `CHECK_${item.id}`;
+                    value = item.checked;
+                    break;
+                case 'number':
+                    key = `VALUE_${item.id}`;
+                    value = Number(item.value);
+                    break;
+                case 'select-one':
+                    key = `SELCT_${item.id}`;
+                    value = item.value;
+                    break;
+                default:
+                    // ラジオボタンはform要素に'axpc_SAVE'が指定されている（deployHTMLで付与）
+                    if (item.classList.contains('axpc_radio')) {
+                        key = `RADIO_${item.id}`;
+                        // 選択中のラジオボタンの値
+                        const checked = item.querySelector('input:checked');
+                        value = checked ? checked.value : undefined;
+                    }
+                    break;
+            }
+            if (key === undefined || value === undefined) continue;
+            // 既に値がある項目は上書きしない（復元された値を優先する）
+            if (target.has(key)) continue;
+            target.set(key, value);
+        }
+    }
+    // 設定ファイルのパレット情報を検証して取り出す
+    // 戻り値 : { column, colors } / 不正な場合はnull
+    parsePaletteData(objPalette) {
+        if (objPalette === null || typeof objPalette !== 'object') return null;
+        if (!Array.isArray(objPalette.colors) || objPalette.colors.length === 0) return null;
+        const COLOR_MAX = this.axpObj.colorPaletteSystem.CONST.COLOR_MAX;
+        const colors = [];
+        for (const code of objPalette.colors) {
+            // 最大パレット数を超えるデータは無視する
+            if (colors.length >= COLOR_MAX) break;
+            if (typeof code !== 'string' || !isColor(code)) return null;
+            colors.push(code);
+        }
+        if (colors.length === 0) return null;
+        // ※0:折り返し無し
+        let column = Number(objPalette.column);
+        if (isNaN(column) || !inRange(column, 0, COLOR_MAX)) {
+            column = 5;
+        }
+        return { column: column, colors: colors };
+    }
+    // 設定ファイル（json）の取り込み
+    importAllConfig(json) {
+        // ツールウィンドウの最小化状態は「最小化する」方向にしか復元されないため、事前に全て解除しておく
+        // （単一ウィンドウモードの解除処理が、ランチャーの表示と全ウィンドウの最小化解除を兼ねている）
+        this.axpObj.launcher.setSingleWindowMode(false, true);
+        // ファイルに含まれないキーが残らないよう、復元前に現在のコンフィグを破棄する
+        this.configObj.clear();
+        // 起動時と同じ復元処理を通す（未知のキー・不正な値はここで除去される）
+        this.restoreConfig(new Map(Object.entries(json.config)));
+        // 画面上には存在するがファイルに含まれていなかった項目を、現在の画面の値で補う
+        // （コンフィグオブジェクトと画面表示が食い違ったまま保存されるのを防ぐ）
+        this.collectConfigFromDOM();
+
+        // カラーパレット
+        const palette = this.parsePaletteData(json.palette);
+        if (palette) {
+            this.axpObj.colorPaletteSystem.setPaletteArray(palette.colors);
+            // 列数はコンフィグ側(PLTCO)を優先し、無い場合のみファイルのcolumnを使用する
+            if (typeof this.getConfig('PLTCO') !== 'number') {
+                this.axpObj.colorPaletteSystem.currentPalette.column = palette.column;
+                this.configObj.set('PLTCO', palette.column);
+            }
+            // DBへ保存
+            this.axpObj.saveSystem.save_palette(palette.colors);
+        }
+
+        // コンフィグオブジェクトをDBに保存
+        this.saveConfig();
+
+        // 復元した設定を各システムへ反映
+        this.axpObj.applyConfigToRuntime();
+        // 以降は起動時には不要な（インポート時のみ必要な）反映処理
+        // カラータグの表示更新（起動時は表示要素がまだ生成されていないため、ここでのみ行う）
+        this.axpObj.layerSystem.updateAllColorTag();
+        // 単一ウィンドウモード
+        // ※解除は復元前に済ませてある。ここで解除を行うと最小化状態の復元が打ち消されるため呼ばない
+        if (document.getElementById('axp_config_checkbox_singleWindowMode').checked) {
+            this.axpObj.launcher.setSingleWindowMode(true, true);
+        }
+
+        alert('設定ファイルを正常に読み込みました。');
+    }
     // ユーザー設定の復元
     restoreConfig(map) {
         // 共通処理
@@ -1659,6 +1903,12 @@ export class ConfigSystem {
             // データタイプ
             const dataType = key.substring(0, 5);
             const elememtId = key.substring(6);
+            // 未知の接頭辞・型の合わない値をここで破棄する
+            // （設定ファイルのインポートにより、外部から任意の値が渡りうるため）
+            if (!isValidConfigType(dataType, value)) {
+                console.log('無効なconfig:', key, value);
+                return;
+            }
             switch (dataType) {
                 // レンジスライダー（ペンツールを除く）
                 case 'RANGE':
@@ -1692,8 +1942,9 @@ export class ConfigSystem {
                         isAvailable = false;
                     }
                     break;
-                // テキストボックスなど（valueの単純代入で処理できるもの）
+                // テキストボックス、セレクトボックスなど（valueの単純代入で処理できるもの）
                 case 'VALUE':
+                case 'SELCT':
                     if (document.getElementById(elememtId)) {
                         document.getElementById(elememtId).value = value;
                     } else {
@@ -1711,13 +1962,23 @@ export class ConfigSystem {
                     break;
                 // 拡大率テーブル
                 case 'SCALE':
-                    this.axpObj.currentScaleTable = value;
+                    // 空配列や数値以外が混ざったデータを受け入れると、拡大率が選択できなくなる
+                    if (value.length > 0 && value.every((item) => typeof item === 'number')) {
+                        this.axpObj.currentScaleTable = value;
+                    } else {
+                        isAvailable = false;
+                    }
                     break;
                 // キャンバスサイズ履歴
                 case 'CHIST':
-                    this.configCanvasSizeHistory = value;
-                    // 表示更新
-                    this.updateCanvasSizeHistory();
+                    // 「幅,高さ」形式の文字列以外が混ざっていると、表示更新時に例外が発生する
+                    if (value.every((item) => typeof item === 'string' && /^\d+,\d+$/.test(item))) {
+                        this.configCanvasSizeHistory = value;
+                        // 表示更新
+                        this.updateCanvasSizeHistory();
+                    } else {
+                        isAvailable = false;
+                    }
                     break;
                 // ツールウィンドウ座標
                 case 'WDPOS':
@@ -1814,7 +2075,10 @@ export class ConfigSystem {
                     break;
                 // カラータグリスト
                 case 'COTAG':
-                    this.axpObj.layerSystem.resetColorTagList(value);
+                    if (!this.axpObj.layerSystem.resetColorTagList(value)) {
+                        // 不正なリストの場合、データを無効とする（デフォルト値が使用される）
+                        isAvailable = false;
+                    }
                     break;
                 // 太さクイックボタン・混色ペンプリセット (値はペンツール側で解釈)
                 case 'QSIZE':

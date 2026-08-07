@@ -649,66 +649,13 @@ export class ConfigSystem {
         }
 
         // 筆圧カーブ プレビュー
-        const drawPressureCurve = () => {
-            const canvas = document.getElementById('axp_config_canvas_pressureCurve');
-            if (!canvas) return;
-            const ctx = canvas.getContext('2d');
-            const w = canvas.width;
-            const h = canvas.height;
-            const aRaw = parseFloat(document.getElementById('axp_config_form_pressureA').volume.value);
-            const b = parseFloat(document.getElementById('axp_config_form_pressureB').volume.value);
-            const c = parseFloat(document.getElementById('axp_config_form_pressureC').volume.value);
-            const a = Math.pow(2, aRaw);
-            const safeC = Math.min(Math.max(c, 0), 0.999);
-            const deadzone = safeC / b;
-            const maxT = 1.0 / b;
-            const f = (x) => {
-                if (x <= deadzone) return 0;
-                if (x >= maxT) return 1;
-                return Math.pow((b * x - safeC) / (1 - safeC), a);
-            };
-            ctx.clearRect(0, 0, w, h);
-            // グリッド
-            ctx.strokeStyle = '#eee';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            for (let i = 1; i < 10; i++) {
-                ctx.moveTo(i * w / 10, 0); ctx.lineTo(i * w / 10, h);
-                ctx.moveTo(0, i * h / 10); ctx.lineTo(w, i * h / 10);
-            }
-            ctx.stroke();
-            // 軸ラベル
-            ctx.fillStyle = '#888';
-            ctx.font = '10px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText('入力', w / 2, h - 2);
-            ctx.save();
-            ctx.translate(10, h / 2);
-            ctx.rotate(-Math.PI / 2);
-            ctx.fillText('出力', 0, 0);
-            ctx.restore();
-            // 曲線
-            ctx.strokeStyle = '#007BFF';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            for (let px = 0; px <= w; px++) {
-                const x = px / w;
-                const py = h - f(x) * h;
-                if (px === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-            }
-            ctx.stroke();
-            // ノード
-            ctx.fillStyle = '#FF3366';
-            ctx.beginPath(); ctx.arc(deadzone * w, h, 3, 0, Math.PI * 2); ctx.fill();
-            ctx.beginPath(); ctx.arc(maxT * w, 0, 3, 0, Math.PI * 2); ctx.fill();
-        };
         ['axp_config_form_pressureA', 'axp_config_form_pressureB', 'axp_config_form_pressureC'].forEach((id) => {
             const form = document.getElementById(id);
             if (!form) return;
-            form.addEventListener('input', drawPressureCurve);
+            form.addEventListener('input', () => this.drawPressureCurve());
         });
         // 初回描画 (設定ロード後の値を反映するため少し遅延)
-        setTimeout(drawPressureCurve, 0);
+        setTimeout(() => this.drawPressureCurve(), 0);
 
         // ハライ/ハネ チューニング
         const flickIds = [
@@ -727,21 +674,7 @@ export class ConfigSystem {
                 });
             }
         }
-        const syncFlickSliders = () => {
-            const pen = this.axpObj.penSystem.penObj[this.axpObj.penSystem.pen_mode];
-            if (!pen || !pen.flickTaper) return;
-            const ft = pen.flickTaper;
-            const setFormValue = (id, raw, display) => {
-                const f = document.getElementById(id);
-                if (f) { f.volume.value = raw; f.result.value = display; }
-            };
-            setFormValue('axp_config_form_flickThreshold', ft.thresholdBase * 100, ft.thresholdBase);
-            setFormValue('axp_config_form_flickFactor', ft.taperFactor, ft.taperFactor);
-            setFormValue('axp_config_form_flickMinRatio', ft.minTaperRatio * 10, ft.minTaperRatio);
-            setFormValue('axp_config_form_flickMaxRatio', ft.maxTaperRatio * 10, ft.maxTaperRatio);
-            setFormValue('axp_config_form_flickExtrap', ft.extrapRatio * 100, ft.extrapRatio * 100);
-        };
-        setTimeout(syncFlickSliders, 0);
+        setTimeout(() => this.syncFlickSliders(), 0);
 
         document.getElementById('axp_config_button_resetFlick').addEventListener('click', () => {
             confirmExPromise('ハライ/ハネの設定をデフォルトに戻します。\nよろしいですか？')
@@ -754,7 +687,7 @@ export class ConfigSystem {
                         pen.flickTaper.maxTaperRatio = 7.0;
                         pen.flickTaper.extrapRatio = 0.15;
                     }
-                    syncFlickSliders();
+                    this.syncFlickSliders();
                 }).catch(() => {});
         });
 
@@ -1678,6 +1611,78 @@ export class ConfigSystem {
     // ユーザー設定から指定したkeyに対応するvalueを返却
     getConfig(key) {
         return this.configObj.get(key);
+    }
+    // 筆圧カーブのプレビューを、現在のスライダーの値から描画する
+    // ※スライダー操作時のinputイベントのほか、設定復元後にも呼び出す必要がある
+    //   （プログラムから値を代入した場合はinputイベントが発生しないため）
+    drawPressureCurve() {
+        const canvas = document.getElementById('axp_config_canvas_pressureCurve');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const w = canvas.width;
+        const h = canvas.height;
+        const aRaw = parseFloat(document.getElementById('axp_config_form_pressureA').volume.value);
+        const b = parseFloat(document.getElementById('axp_config_form_pressureB').volume.value);
+        const c = parseFloat(document.getElementById('axp_config_form_pressureC').volume.value);
+        const a = Math.pow(2, aRaw);
+        const safeC = Math.min(Math.max(c, 0), 0.999);
+        const deadzone = safeC / b;
+        const maxT = 1.0 / b;
+        const f = (x) => {
+            if (x <= deadzone) return 0;
+            if (x >= maxT) return 1;
+            return Math.pow((b * x - safeC) / (1 - safeC), a);
+        };
+        ctx.clearRect(0, 0, w, h);
+        // グリッド
+        ctx.strokeStyle = '#eee';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let i = 1; i < 10; i++) {
+            ctx.moveTo(i * w / 10, 0); ctx.lineTo(i * w / 10, h);
+            ctx.moveTo(0, i * h / 10); ctx.lineTo(w, i * h / 10);
+        }
+        ctx.stroke();
+        // 軸ラベル
+        ctx.fillStyle = '#888';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('入力', w / 2, h - 2);
+        ctx.save();
+        ctx.translate(10, h / 2);
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillText('出力', 0, 0);
+        ctx.restore();
+        // 曲線
+        ctx.strokeStyle = '#007BFF';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let px = 0; px <= w; px++) {
+            const x = px / w;
+            const py = h - f(x) * h;
+            if (px === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+        // ノード
+        ctx.fillStyle = '#FF3366';
+        ctx.beginPath(); ctx.arc(deadzone * w, h, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(maxT * w, 0, 3, 0, Math.PI * 2); ctx.fill();
+    }
+    // ハライ/ハネのスライダー表示を、現在のペンの設定値から更新する
+    // ※設定復元後にも呼び出す必要がある（呼び出し元の注意点はdrawPressureCurveと同じ）
+    syncFlickSliders() {
+        const pen = this.axpObj.penSystem.penObj[this.axpObj.penSystem.pen_mode];
+        if (!pen || !pen.flickTaper) return;
+        const ft = pen.flickTaper;
+        const setFormValue = (id, raw, display) => {
+            const f = document.getElementById(id);
+            if (f) { f.volume.value = raw; f.result.value = display; }
+        };
+        setFormValue('axp_config_form_flickThreshold', ft.thresholdBase * 100, ft.thresholdBase);
+        setFormValue('axp_config_form_flickFactor', ft.taperFactor, ft.taperFactor);
+        setFormValue('axp_config_form_flickMinRatio', ft.minTaperRatio * 10, ft.minTaperRatio);
+        setFormValue('axp_config_form_flickMaxRatio', ft.maxTaperRatio * 10, ft.maxTaperRatio);
+        setFormValue('axp_config_form_flickExtrap', ft.extrapRatio * 100, ft.extrapRatio * 100);
     }
     // 画面上の設定項目('axpc_SAVE'指定の要素)のうち、対象のMapに存在しないものを現在の値で補う
     // ・エクスポート時：一度も変更していない項目（＝Mapに未登録の初期値）もファイルに含めるために使用する

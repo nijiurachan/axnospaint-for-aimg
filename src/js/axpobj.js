@@ -2561,6 +2561,10 @@ export class AXPObj {
         this.penSystem.restoreDiffusionPresets();
         // ユーザー設定が復元された後のペンツールの再描画
         this.penSystem.changePenMode();
+        // 筆圧カーブのプレビュー
+        this.configSystem.drawPressureCurve();
+        // ハライ/ハネのスライダー表示（現在のペンの値を参照するため、ペン確定後に行う）
+        this.configSystem.syncFlickSliders();
     }
     config(id) {
         let element = document.getElementById(id);

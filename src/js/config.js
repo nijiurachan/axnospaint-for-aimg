@@ -1710,10 +1710,6 @@ export class ConfigSystem {
             let key;
             let value;
             switch (item.type) {
-                case 'range':
-                    key = `RANGE_${item.id}`;
-                    value = item.value;
-                    break;
                 case 'checkbox':
                     key = `CHECK_${item.id}`;
                     value = item.checked;
@@ -1727,8 +1723,13 @@ export class ConfigSystem {
                     value = item.value;
                     break;
                 default:
-                    // ラジオボタンはform要素に'axpc_SAVE'が指定されている（deployHTMLで付与）
-                    if (item.classList.contains('axpc_radio')) {
+                    // レンジスライダーとラジオボタンは、入力要素ではなくそれを囲むform要素に
+                    // 'axpc_SAVE'が指定されている（form要素のtypeはundefinedになる）
+                    if (item.classList.contains('axpc_range')) {
+                        // 値は内側のレンジ入力(name="volume")が持つ
+                        key = `RANGE_${item.id}`;
+                        value = item.volume ? item.volume.value : undefined;
+                    } else if (item.classList.contains('axpc_radio')) {
                         key = `RADIO_${item.id}`;
                         // 選択中のラジオボタンの値
                         const checked = item.querySelector('input:checked');

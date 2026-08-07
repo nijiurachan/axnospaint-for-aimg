@@ -106,6 +106,17 @@ const CONFIG_VALUE_TYPE = {
     COTAG: 'array',
 };
 
+// ハライ/ハネ設定のフォームと、ペンオブジェクト(flickTaper)のプロパティの対応表
+// [フォームID, ペン側のプロパティ名, スライダー値に対する倍率, 表示値にスライダー値をそのまま使うか]
+// ※スライダー値 = ペンの値 × 倍率
+const FLICK_TAPER_FORMS = [
+    ['axp_config_form_flickThreshold', 'thresholdBase', 100, false],
+    ['axp_config_form_flickFactor', 'taperFactor', 1, false],
+    ['axp_config_form_flickMinRatio', 'minTaperRatio', 10, false],
+    ['axp_config_form_flickMaxRatio', 'maxTaperRatio', 10, false],
+    ['axp_config_form_flickExtrap', 'extrapRatio', 100, true],
+];
+
 // コンフィグ値が期待する型と一致するか判定する
 function isValidConfigType(dataType, value) {
     const expectType = CONFIG_VALUE_TYPE[dataType];
@@ -658,14 +669,7 @@ export class ConfigSystem {
         setTimeout(() => this.drawPressureCurve(), 0);
 
         // ハライ/ハネ チューニング
-        const flickIds = [
-            ['axp_config_form_flickThreshold', 'thresholdBase', 100],
-            ['axp_config_form_flickFactor',    'taperFactor',     1],
-            ['axp_config_form_flickMinRatio',  'minTaperRatio',  10],
-            ['axp_config_form_flickMaxRatio',  'maxTaperRatio',  10],
-            ['axp_config_form_flickExtrap',    'extrapRatio',   100],
-        ];
-        for (const [formId, prop, divisor] of flickIds) {
+        for (const [formId, prop, divisor] of FLICK_TAPER_FORMS) {
             const form = document.getElementById(formId);
             if (form && form.volume) {
                 form.volume.addEventListener('input', () => {
@@ -674,7 +678,6 @@ export class ConfigSystem {
                 });
             }
         }
-        setTimeout(() => this.syncFlickSliders(), 0);
 
         document.getElementById('axp_config_button_resetFlick').addEventListener('click', () => {
             confirmExPromise('ハライ/ハネの設定をデフォルトに戻します。\nよろしいですか？')
@@ -1674,15 +1677,28 @@ export class ConfigSystem {
         const pen = this.axpObj.penSystem.penObj[this.axpObj.penSystem.pen_mode];
         if (!pen || !pen.flickTaper) return;
         const ft = pen.flickTaper;
-        const setFormValue = (id, raw, display) => {
-            const f = document.getElementById(id);
-            if (f) { f.volume.value = raw; f.result.value = display; }
-        };
-        setFormValue('axp_config_form_flickThreshold', ft.thresholdBase * 100, ft.thresholdBase);
-        setFormValue('axp_config_form_flickFactor', ft.taperFactor, ft.taperFactor);
-        setFormValue('axp_config_form_flickMinRatio', ft.minTaperRatio * 10, ft.minTaperRatio);
-        setFormValue('axp_config_form_flickMaxRatio', ft.maxTaperRatio * 10, ft.maxTaperRatio);
-        setFormValue('axp_config_form_flickExtrap', ft.extrapRatio * 100, ft.extrapRatio * 100);
+        for (const [formId, prop, divisor, displayIsRaw] of FLICK_TAPER_FORMS) {
+            const form = document.getElementById(formId);
+            if (!form) continue;
+            // 浮動小数点の誤差が表示に出ないよう丸める（例：0.15×100＝15.000000000000002）
+            const raw = Math.round(ft[prop] * divisor * 1000) / 1000;
+            form.volume.value = raw;
+            form.result.value = displayIsRaw ? raw : ft[prop];
+        }
+    }
+    // ハライ/ハネのスライダーの値を、現在のペンの設定値へ反映する
+    // 起動時の復元では、値を代入した時点ではまだinputイベントのハンドラが登録されていないため、
+    // イベント経由ではペンに反映されない。設定復元後にこのメソッドを明示的に呼び出す必要がある。
+    applyFlickConfigToPen() {
+        const pen = this.axpObj.penSystem.penObj[this.axpObj.penSystem.pen_mode];
+        if (!pen || !pen.flickTaper) return;
+        for (const [formId, prop, divisor] of FLICK_TAPER_FORMS) {
+            const form = document.getElementById(formId);
+            if (!form || !form.volume) continue;
+            const value = Number(form.volume.value);
+            if (isNaN(value)) continue;
+            pen.flickTaper[prop] = value / divisor;
+        }
     }
     // 画面上の設定項目('axpc_SAVE'指定の要素)のうち、対象のMapに存在しないものを現在の値で補う
     // ・エクスポート時：一度も変更していない項目（＝Mapに未登録の初期値）もファイルに含めるために使用する
@@ -2105,15 +2121,9 @@ export class ConfigSystem {
                 console.log('無効なconfig:', key, value);
             }
         })
-        // ハライスライダーの復元値をペンオブジェクトに反映
-        for (const id of [
-            'axp_config_form_flickThreshold', 'axp_config_form_flickFactor',
-            'axp_config_form_flickMinRatio', 'axp_config_form_flickMaxRatio',
-            'axp_config_form_flickExtrap',
-        ]) {
-            const form = document.getElementById(id);
-            if (form && form.volume) form.volume.dispatchEvent(new Event('input'));
-        }
+        // ※ハライスライダーの復元値をペンオブジェクトへ反映する処理は
+        //   applyConfigToRuntime の applyFlickConfigToPen で行う。
+        //   ここでinputイベントを発行する方法では、起動時はまだハンドラが未登録のため反映されない。
     }
     /**
      * 設定のカラーパレット表示用HTMLを、カラーパレット配列を基に生成する

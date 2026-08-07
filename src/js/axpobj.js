@@ -2563,7 +2563,9 @@ export class AXPObj {
         this.penSystem.changePenMode();
         // 筆圧カーブのプレビュー
         this.configSystem.drawPressureCurve();
-        // ハライ/ハネのスライダー表示（現在のペンの値を参照するため、ペン確定後に行う）
+        // ハライ/ハネ（現在のペンを参照するため、ペンモード確定後に行う）
+        // 復元したスライダーの値をペンへ反映し、その結果をスライダー表示へ戻す
+        this.configSystem.applyFlickConfigToPen();
         this.configSystem.syncFlickSliders();
     }
     config(id) {

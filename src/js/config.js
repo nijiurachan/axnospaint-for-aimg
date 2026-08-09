@@ -1779,13 +1779,16 @@ export class ConfigSystem {
 
         // カラーパレット
         const palette = this.parsePaletteData(json.palette);
+        // パレットの列数(PLTCO)は画面上の設定項目ではないため、collectConfigFromDOMでは補われない。
+        // 優先順位：ファイルのconfig(PLTCO) → ファイルのpalette.column → 現在の画面の列数
+        // ※どれも設定しないままだとコンフィグから列数が失われ、次回起動時に既定値へ戻ってしまう
+        if (typeof this.getConfig('PLTCO') !== 'number') {
+            const column = palette ? palette.column : this.axpObj.colorPaletteSystem.currentPalette.column;
+            this.axpObj.colorPaletteSystem.currentPalette.column = column;
+            this.configObj.set('PLTCO', column);
+        }
         if (palette) {
             this.axpObj.colorPaletteSystem.setPaletteArray(palette.colors);
-            // 列数はコンフィグ側(PLTCO)を優先し、無い場合のみファイルのcolumnを使用する
-            if (typeof this.getConfig('PLTCO') !== 'number') {
-                this.axpObj.colorPaletteSystem.currentPalette.column = palette.column;
-                this.configObj.set('PLTCO', palette.column);
-            }
             // DBへ保存
             this.axpObj.saveSystem.save_palette(palette.colors);
         }
@@ -1984,8 +1987,13 @@ export class ConfigSystem {
                     break;
                 // 拡大率テーブル
                 case 'SCALE':
-                    // 空配列や数値以外が混ざったデータを受け入れると、拡大率が選択できなくなる
-                    if (value.length > 0 && value.every((item) => typeof item === 'number')) {
+                    // 画面から拡大率を追加するときと同じ条件で検証する。
+                    // 空配列では拡大率を選択できなくなり、範囲外の値は拡大操作でそのまま
+                    // 適用されてしまう（zoomIn/zoomOutはテーブルの値を直接代入するため）。
+                    if (value.length > 0
+                        && value.length <= this.axpObj.CONST.SCALE_TABLE_MAX
+                        && value.every((item) => typeof item === 'number'
+                            && inRange(item, this.axpObj.CONST.SCALE_MIN, this.axpObj.CONST.SCALE_MAX))) {
                         this.axpObj.currentScaleTable = value;
                     } else {
                         isAvailable = false;

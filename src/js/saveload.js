@@ -6,16 +6,44 @@ import { UTIL, inRange, getFileNameFromURL } from './etc.js';
 const AUTOSAVE_INTERVAL = 10;
 // indexedDB定義
 const DB_NAME = 'axnospaint_db1';
-const DB_VERSION = 2;
+// ver.3 : スロット一覧表示用ストア(save_manual_meta)を追加
+const DB_VERSION = 3;
 const STORE_NAME_SAVE_MANUAL = 'save_manual';
+// マニュアル保存の一覧表示専用ストア（レイヤー画像を含まない軽量な情報のみ）
+const STORE_NAME_SAVE_MANUAL_META = 'save_manual_meta';
 const STORE_NAME_SAVE_AUTO = 'save_auto';
 const STORE_NAME_CONFIG = 'save_config';
 const STORE_NAME_PALETTE = 'save_palette';
 
 // 自動保存の最大スロット数
+// ※この値を増やす場合、一覧表示(loadEntry)がレイヤー画像を含む全レコードを
+//   読み込む作りのため、マニュアル保存と同様にメタ情報ストアの導入が必要になる。
 const AUTOSAVE_MAX = 20;
 // マニュアル保存の最大スロット数
-const MANUALSAVE_MAX = 5;
+// ※一覧はメタ情報ストアと番号ループで生成するため、増減してもDBの移行は不要。
+const MANUALSAVE_MAX = 50;
+// マニュアル保存スロットIDのゼロ埋め桁数
+// ※既存の save_01〜save_05 と同一書式。並び順は番号ループで決まるため桁数は表示上の意味しか持たない。
+const MANUALSAVE_PAD = 2;
+
+// スロット番号(1〜) から 主キー を求める
+const manualSlotId = (no) => 'save_' + String(no).padStart(MANUALSAVE_PAD, '0');
+// 主キー から スロット番号（表示用文字列） を求める
+const manualSlotNo = (id) => String(id).slice('save_'.length);
+
+// スロット一覧表示に必要な情報だけを抜き出す
+// ※レイヤー画像(ImageData)を含めないこと。含めるとこの仕組みの意味が失われる。
+function createManualMeta(data) {
+    return {
+        id: data.id,
+        created: data.created,
+        src: data.src,
+        x_max: data.x_max,
+        y_max: data.y_max,
+        oekaki_id: data.oekaki_id,
+        draftImageFile: data.draftImageFile,
+    };
+}
 
 export class SaveSystem {
     axpObj;
@@ -41,9 +69,14 @@ export class SaveSystem {
     async initDB() {
         let result;
         try {
+            // 'ok' / 'unavailable' / 'blocked' のいずれかが返る
             result = await this.dbSystem.initIndexedDB();
-            if (result) {
+            if (result === 'ok') {
                 this.isDBAvailable = true;
+            } else if (result === 'blocked') {
+                // 別タブが古いバージョンのDBを開いたままだと、バージョン更新が行えない
+                alert('AXNOS Paintが別のタブでも開かれているため、データベースの更新ができません。\n他のタブを閉じてから、ページを再読み込みしてください。\nセーブ/ロード機能などは利用できません。');
+                this.isDBAvailable = false;
             } else {
                 alert('ブラウザのIndexedDBが無効になっています。\nセーブ/ロード機能などは利用できません。');
                 this.isDBAvailable = false;
@@ -140,6 +173,13 @@ export class SaveSystem {
         } else {
             newDiv.setAttribute('class', 'axpc_saveload_loadSlot');
         }
+        // スロット番号（マニュアル保存のみ。自動保存はキーが自動採番のため表示しない）
+        if (mode !== 'auto') {
+            const newDivSlotNo = document.createElement('div');
+            newDivSlotNo.setAttribute('class', 'axpc_saveload_slotNo');
+            newDivSlotNo.textContent = `スロット${manualSlotNo(cursor.primaryKey)}`;
+            newDiv.appendChild(newDivSlotNo);
+        }
         // サムネイル枠
         const newDivThumbnall = document.createElement('div');
         newDivThumbnall.setAttribute('class', 'axpc_saveload_thumbnall');
@@ -197,9 +237,9 @@ export class SaveSystem {
         if (!this.openWindow()) {
             return;
         }
-        document.getElementById('axp_saveload_span_message').textContent = 'セーブするスロットを選択（※保存済みのスロットは上書きされます）';
+        document.getElementById('axp_saveload_span_message').textContent = `セーブするスロットを選択（全${MANUALSAVE_MAX}スロット／※保存済みのスロットは上書きされます）`;
         try {
-            await this.dbSystem.loadEntry('save', STORE_NAME_SAVE_MANUAL, this.createSlotHTML);
+            await this.dbSystem.loadManualEntry('save', this.createSlotHTML);
             // スロット要素（直下の子要素div）を取得
             const elementsSlot = document.querySelectorAll('#axp_saveload_div_insertHTML > div');
             for (const item of elementsSlot) {
@@ -228,9 +268,9 @@ export class SaveSystem {
                     (async () => {
                         // 指定のデータをDBへ書き込む
                         try {
-                            await this.dbSystem.saveToDB(data, STORE_NAME_SAVE_MANUAL);
+                            await this.dbSystem.saveManualToDB(data);
                             // スロット%1にセーブしました。
-                            this.axpObj.msg('@INF0300', save_id.substr(5));
+                            this.axpObj.msg('@INF0300', manualSlotNo(save_id));
                         } catch (error) {
                             console.log(error);
                             alert(`エラー：セーブデータの保存に失敗しました。\n${error}`);
@@ -249,7 +289,11 @@ export class SaveSystem {
     // mode: 'load' or 'auto'
     async loadCommon(mode, storeName) {
         try {
-            await this.dbSystem.loadEntry(mode, storeName, this.createSlotHTML);
+            if (mode === 'auto') {
+                await this.dbSystem.loadEntry(mode, storeName, this.createSlotHTML);
+            } else {
+                await this.dbSystem.loadManualEntry(mode, this.createSlotHTML);
+            }
             // スロット要素（直下の子要素div）を取得
             const elementsSlot = document.querySelectorAll('#axp_saveload_div_insertHTML > div');
             for (const item of elementsSlot) {
@@ -271,7 +315,7 @@ export class SaveSystem {
                             //console.log(data);
                             if (data.created === undefined) {
                                 // スロット%1にはデータがありません。
-                                this.axpObj.msg('@CAU0301', save_id.substr(5));
+                                this.axpObj.msg('@CAU0301', manualSlotNo(save_id));
                                 return;
                             }
                             // 画像サイズが許容範囲かチェック
@@ -295,7 +339,7 @@ export class SaveSystem {
                                     this.axpObj.msg('@INF0302');
                                 } else {
                                     // スロット%1をロードしました。
-                                    this.axpObj.msg('@INF0301', save_id.substr(5));
+                                    this.axpObj.msg('@INF0301', manualSlotNo(save_id));
                                 }
                             } else {
                                 // 掲示板不一致
@@ -331,7 +375,7 @@ export class SaveSystem {
         if (!this.openWindow()) {
             return;
         }
-        document.getElementById('axp_saveload_span_message').textContent = '自動バックアップ（10ストローク毎に最大20件まで保存）を選択（※現在の描画内容は破棄されます）';
+        document.getElementById('axp_saveload_span_message').textContent = `自動バックアップ（${AUTOSAVE_INTERVAL}ストローク毎に最大${AUTOSAVE_MAX}件まで保存）を選択（※現在の描画内容は破棄されます）`;
         this.loadCommon('auto', STORE_NAME_SAVE_AUTO);
     }
     // 「基にしてお絵カキコ」情報のチェックと復元
@@ -489,26 +533,32 @@ export class SaveSystem {
 class DbSystem {
     constructor() {
     }
+    // DB初期化
+    // 戻り値 : 'ok' / 'unavailable'（indexedDBが使用不可） / 'blocked'（別タブがDBを開いている）
     initIndexedDB() {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             if (!window.indexedDB) {
                 // indexedDBが使用不可な環境（正常終了）
-                resolve(false);
+                resolve('unavailable');
+                return;
             }
             const openReq = indexedDB.open(DB_NAME, DB_VERSION);
             openReq.onerror = () => {
-                reject(new Error('initIndexedDB:openReq.onerror'));
+                console.log('initIndexedDB:openReq.onerror', openReq.error);
+                resolve('unavailable');
+            }
+            // 別タブが古いバージョンのDBを開いていると、バージョン更新が行えず処理が進まなくなる
+            // （ハンドラを設けないと、この関数のPromiseが永久に解決せず起動処理が停止する）
+            openReq.onblocked = () => {
+                resolve('blocked');
             }
             openReq.onupgradeneeded = (event) => {
                 const db = openReq.result;
                 // 初回利用時（またはDBが古い状態の時）DBを新規作成／更新する
                 if (event.oldVersion <= 1) {
-                    const store_manual = db.createObjectStore(STORE_NAME_SAVE_MANUAL, { keyPath: 'id' });
-                    store_manual.put({ id: 'save_01' });
-                    store_manual.put({ id: 'save_02' });
-                    store_manual.put({ id: 'save_03' });
-                    store_manual.put({ id: 'save_04' });
-                    store_manual.put({ id: 'save_05' });
+                    // ※空きスロットのプレースホルダは作成しない
+                    //   （一覧はメタ情報ストアと番号ループから生成するため不要）
+                    db.createObjectStore(STORE_NAME_SAVE_MANUAL, { keyPath: 'id' });
 
                     const store_auto = db.createObjectStore(STORE_NAME_SAVE_AUTO, { autoIncrement: true });
                     store_auto.createIndex('created', 'created', { unique: false });
@@ -519,14 +569,37 @@ class DbSystem {
                     const store_palette = db.createObjectStore(STORE_NAME_PALETTE, { keyPath: 'id' });
                     store_palette.put({ id: 'palette_01' });
                 }
+                if (event.oldVersion <= 2) {
+                    // ver.3 : スロット一覧表示用の軽量ストアを追加
+                    const store_meta = db.createObjectStore(STORE_NAME_SAVE_MANUAL_META, { keyPath: 'id' });
+                    // 既存のセーブデータからサムネイル情報を移送する
+                    // （移送対象は旧バージョンの上限である最大5件のため、処理時間は問題にならない）
+                    const store_manual = openReq.transaction.objectStore(STORE_NAME_SAVE_MANUAL);
+                    const readReq = store_manual.openCursor();
+                    readReq.onsuccess = () => {
+                        const cursor = readReq.result;
+                        if (!cursor) return;
+                        // 空スロット（旧バージョンのプレースホルダ）は移送しない
+                        if (cursor.value.created !== undefined) {
+                            store_meta.put(createManualMeta(cursor.value));
+                        }
+                        cursor.continue();
+                    }
+                }
             }
             openReq.onsuccess = () => {
-                resolve(true);
+                const db = openReq.result;
+                // 別タブがDBのバージョンを更新しようとしたら接続を手放す
+                // ※このハンドラは今回のver.2→ver.3の更新時には機能しない（旧バージョンのタブには存在しないため）。
+                //   次回以降のバージョン更新を安全に行うための備え。
+                db.onversionchange = () => { db.close(); }
+                db.close();
+                resolve('ok');
             }
         });
     }
-    // エントリーロード（セーブロード自動保存共通）
-    // mode : 'save'or 'load' of 'auto'
+    // エントリーロード（自動保存専用）
+    // mode : 'auto'
     // storeName : ストア名
     // dispFunction : 画面表示用コールバック関数
     loadEntry(mode, storeName, dispFunction) {
@@ -537,6 +610,9 @@ class DbSystem {
             openReq.onerror = () => {
                 reject(new Error('loadEntry:openReq.onerror'));
             }
+            openReq.onblocked = () => {
+                reject(new Error('loadEntry:openReq.onblocked'));
+            }
             // DBからレイヤーオブジェクトを読み込み
             openReq.onsuccess = () => {
                 db = openReq.result;
@@ -544,21 +620,12 @@ class DbSystem {
                 const transaction = db.transaction(storeName);
                 const store = transaction.objectStore(storeName);
 
-                let direction;
-                let slotMAX;
-                if (mode === 'auto') {
-                    // 自動保存は新着順
-                    direction = 'prev';
-                    slotMAX = AUTOSAVE_MAX;
-                } else {
-                    // セーブロードはID順
-                    direction = 'next';
-                    slotMAX = MANUALSAVE_MAX;
-                }
-                const readReq = store.openCursor(null, direction);
+                // 自動保存は新着順
+                const readReq = store.openCursor(null, 'prev');
 
                 let idx = 0;
                 readReq.onerror = () => {
+                    db.close();
                     reject(new Error('loadEntry:readReq.onerror'));
                 }
                 readReq.onsuccess = () => {
@@ -568,22 +635,58 @@ class DbSystem {
                         dispFunction(mode, cursor);
                         // カーソルを進める
                         idx++;
-                        //console.log(idx);
-                        if (idx < slotMAX) {
+                        if (idx < AUTOSAVE_MAX) {
                             cursor.continue();
                         } else {
                             // 最大件数まで読み込んだら正常終了
+                            db.close();
                             resolve();
                         }
                     } else {
-                        if (mode === 'auto') {
-                            // 最大件数に満たない場合でも正常終了
-                            resolve();
-                        } else {
-                            // 既定分のカーソルが取得できなかった場合
-                            reject(new Error('loadEntry:readReq.onsuccess'));
-                        }
+                        // 最大件数に満たない場合でも正常終了
+                        db.close();
+                        resolve();
                     }
+                }
+            }
+        });
+    }
+    // エントリーロード（マニュアル保存専用）
+    // 一覧表示にはメタ情報ストアのみを使用し、レイヤー画像は読み込まない
+    // mode : 'save' or 'load'
+    // dispFunction : 画面表示用コールバック関数
+    loadManualEntry(mode, dispFunction) {
+        return new Promise((resolve, reject) => {
+            const openReq = indexedDB.open(DB_NAME, DB_VERSION);
+            openReq.onerror = () => {
+                reject(new Error('loadManualEntry:openReq.onerror'));
+            }
+            openReq.onblocked = () => {
+                reject(new Error('loadManualEntry:openReq.onblocked'));
+            }
+            openReq.onsuccess = () => {
+                const db = openReq.result;
+                const transaction = db.transaction(STORE_NAME_SAVE_MANUAL_META);
+                const store = transaction.objectStore(STORE_NAME_SAVE_MANUAL_META);
+                const readReq = store.getAll();
+                readReq.onerror = () => {
+                    db.close();
+                    reject(new Error('loadManualEntry:readReq.onerror'));
+                }
+                readReq.onsuccess = () => {
+                    // 主キーで引けるようにする
+                    const mapMeta = new Map();
+                    for (const item of readReq.result) {
+                        mapMeta.set(item.id, item);
+                    }
+                    // スロット番号順に、規定数ぶん必ず生成する
+                    // （メタ情報が無いスロットは空きとして表示されるため、DB側の事前準備は不要）
+                    for (let no = 1; no <= MANUALSAVE_MAX; no++) {
+                        const id = manualSlotId(no);
+                        dispFunction(mode, { primaryKey: id, value: mapMeta.get(id) || {} });
+                    }
+                    db.close();
+                    resolve();
                 }
             }
         });
@@ -595,17 +698,51 @@ class DbSystem {
             openReq.onerror = () => {
                 reject(new Error('saveToDB:openReq.onerror'));
             }
+            openReq.onblocked = () => {
+                reject(new Error('saveToDB:openReq.onblocked'));
+            }
             openReq.onsuccess = () => {
                 const db = openReq.result;
                 const transaction = db.transaction(storeName, "readwrite");
                 // 操作するためにオブジェクトストアを取得
                 const store = transaction.objectStore(storeName);
                 // DBへレイヤーオブジェクトを書き込み
-                const saveReq = store.put(data);
-                saveReq.onerror = () => {
-                    reject(new Error('saveToDB:saveReq.onerror'));
+                store.put(data);
+                transaction.onerror = () => {
+                    db.close();
+                    reject(new Error('saveToDB:transaction.onerror'));
                 }
-                saveReq.onsuccess = () => {
+                // 書き込みが確定してから正常終了とする
+                transaction.oncomplete = () => {
+                    db.close();
+                    resolve();
+                }
+            }
+        });
+    }
+    // DBへセーブ（マニュアル保存用）
+    // セーブデータ本体と一覧表示用のメタ情報を、同一トランザクションで書き込む
+    saveManualToDB(data) {
+        return new Promise((resolve, reject) => {
+            const openReq = indexedDB.open(DB_NAME, DB_VERSION);
+            openReq.onerror = () => {
+                reject(new Error('saveManualToDB:openReq.onerror'));
+            }
+            openReq.onblocked = () => {
+                reject(new Error('saveManualToDB:openReq.onblocked'));
+            }
+            openReq.onsuccess = () => {
+                const db = openReq.result;
+                const transaction = db.transaction(
+                    [STORE_NAME_SAVE_MANUAL, STORE_NAME_SAVE_MANUAL_META], "readwrite");
+                transaction.objectStore(STORE_NAME_SAVE_MANUAL).put(data);
+                transaction.objectStore(STORE_NAME_SAVE_MANUAL_META).put(createManualMeta(data));
+                transaction.onerror = () => {
+                    db.close();
+                    reject(new Error('saveManualToDB:transaction.onerror'));
+                }
+                transaction.oncomplete = () => {
+                    db.close();
                     resolve();
                 }
             }
@@ -618,13 +755,16 @@ class DbSystem {
             openReq.onerror = () => {
                 reject(new Error('autosaveToDB:openReq.onerror'));
             }
+            openReq.onblocked = () => {
+                reject(new Error('autosaveToDB:openReq.onblocked'));
+            }
             openReq.onsuccess = () => {
                 const db = openReq.result;
                 const transaction = db.transaction(storeName, "readwrite");
                 // 操作するためにオブジェクトストアを取得
                 const store = transaction.objectStore(storeName);
 
-                // データが２０件を超える場合は一番古いものを削除
+                // データが規定の最大件数を超える場合は一番古いものを削除
                 const countReq = store.count();
                 countReq.onerror = () => {
                     reject(new Error('autosaveToDB:countReq.onerror'));
@@ -656,11 +796,13 @@ class DbSystem {
                     }
                 }
                 // DBへレイヤーオブジェクトを書き込み
-                const saveReq = store.put(data);
-                saveReq.onerror = () => {
-                    reject(new Error('autosaveToDB:saveReq.onerror'));
+                store.put(data);
+                transaction.onerror = () => {
+                    db.close();
+                    reject(new Error('autosaveToDB:transaction.onerror'));
                 }
-                saveReq.onsuccess = () => {
+                transaction.oncomplete = () => {
+                    db.close();
                     resolve();
                 }
             }
@@ -673,6 +815,9 @@ class DbSystem {
             openReq.onerror = () => {
                 reject(new Error('loadFromDB:openReq.onerror'));
             }
+            openReq.onblocked = () => {
+                reject(new Error('loadFromDB:openReq.onblocked'));
+            }
             openReq.onsuccess = () => {
                 const db = openReq.result;
                 // DBから読み込み
@@ -680,13 +825,17 @@ class DbSystem {
                 const store = transaction.objectStore(storeName);
                 const readReq = store.get(id);
                 readReq.onerror = () => {
+                    db.close();
                     reject(new Error('loadFromDB:readReq.onerror'));
                 }
                 readReq.onsuccess = () => {
+                    db.close();
                     if (readReq.result !== undefined) {
                         resolve(readReq.result);
                     } else {
-                        reject(new Error('loadFromDB:readReq.onsuccess'));
+                        // レコードが存在しない＝未使用のスロット
+                        // （呼び出し元がcreatedの有無で空きスロットと判定する）
+                        resolve({ id: id });
                     }
                 }
             }

@@ -68,6 +68,71 @@ const objKeyFunction = [
 
 const mapFunction = new Map();
 
+// 全設定ファイル（json）の識別子と書式バージョン
+// ※書式バージョンは互換性が失われる変更を行った場合のみ上げる。
+//   設定項目を追加しただけの場合は、未知のキーが復元時に破棄されるため上げる必要はない。
+const CONFIG_FILE_MAGIC = 'AXNOSPaintCONFIG';
+const CONFIG_FILE_FORMAT_VERSION = 1;
+
+// コンフィグ値の型定義（接頭辞 → 期待する型）
+// 復元処理(restoreConfig)の前段で照合し、型の合わない値を破棄することでクラッシュを防ぐ。
+// 設定ファイルのインポートにより外部から任意の値が渡りうるため、この照合は必須。
+// ※新しい接頭辞を追加する場合は、ここにも追記すること（未登録の接頭辞は無効データとして破棄される）
+// ※厳密な検証が目的ではなくクラッシュ防止が目的のため、判断に迷う場合は 'any' とする
+const CONFIG_VALUE_TYPE = {
+    // 文字列と数値のどちらもありうる（保存元により異なる）
+    RANGE: 'any',
+    VALUE: 'any',
+    CHECK: 'boolean',
+    RADIO: 'string',
+    TOGSW: 'boolean',
+    SELCT: 'string',
+    // value.substring() を行うため文字列であることが必須
+    GRIDC: 'string',
+    // value.split(',') を行うため文字列であることが必須
+    CFUNC: 'string',
+    WDPOS: 'string',
+    WDMIN: 'boolean',
+    // ペンツールの各種値（旧データに 'true'/'false' の文字列が含まれうるため 'any'）
+    'P-SIZ': 'any', 'P-ALP': 'any', 'P-THR': 'any', 'P-BLU': 'any',
+    'P-TON': 'any', 'P-DEG': 'any', 'P-RAD': 'any', 'P-HRD': 'any',
+    'P-DIF': 'any', 'P-DRG': 'any', 'P-USP': 'any', 'P-SPA': 'any',
+    QSIZE: 'any',
+    // DPRST_<n>は文字列(json)、DPRST_openは真偽値
+    DPRST: 'any',
+    SCALE: 'array',
+    CHIST: 'array',
+    PLTCO: 'number',
+    COTAG: 'array',
+};
+
+// ハライ/ハネ設定のフォームと、ペンオブジェクト(flickTaper)のプロパティの対応表
+// [フォームID, ペン側のプロパティ名, スライダー値に対する倍率, 表示値にスライダー値をそのまま使うか]
+// ※スライダー値 = ペンの値 × 倍率
+const FLICK_TAPER_FORMS = [
+    ['axp_config_form_flickThreshold', 'thresholdBase', 100, false],
+    ['axp_config_form_flickFactor', 'taperFactor', 1, false],
+    ['axp_config_form_flickMinRatio', 'minTaperRatio', 10, false],
+    ['axp_config_form_flickMaxRatio', 'maxTaperRatio', 10, false],
+    ['axp_config_form_flickExtrap', 'extrapRatio', 100, true],
+];
+
+// コンフィグ値が期待する型と一致するか判定する
+function isValidConfigType(dataType, value) {
+    const expectType = CONFIG_VALUE_TYPE[dataType];
+    if (expectType === undefined) {
+        // 未知の接頭辞
+        return false;
+    }
+    if (expectType === 'any') {
+        return true;
+    }
+    if (expectType === 'array') {
+        return Array.isArray(value);
+    }
+    return typeof value === expectType;
+}
+
 // 設定機能制御オブジェクト
 export class ConfigSystem {
     axpObj;
@@ -388,6 +453,10 @@ export class ConfigSystem {
                         this.saveConfig(`VALUE_${e.target.id}`, value);
                         break;
                     }
+                    case 'select-one':
+                        // セレクトボックス
+                        this.saveConfig(`SELCT_${e.currentTarget.id}`, e.target.value);
+                        break;
                 }
             })
         };
@@ -591,76 +660,16 @@ export class ConfigSystem {
         }
 
         // 筆圧カーブ プレビュー
-        const drawPressureCurve = () => {
-            const canvas = document.getElementById('axp_config_canvas_pressureCurve');
-            if (!canvas) return;
-            const ctx = canvas.getContext('2d');
-            const w = canvas.width;
-            const h = canvas.height;
-            const aRaw = parseFloat(document.getElementById('axp_config_form_pressureA').volume.value);
-            const b = parseFloat(document.getElementById('axp_config_form_pressureB').volume.value);
-            const c = parseFloat(document.getElementById('axp_config_form_pressureC').volume.value);
-            const a = Math.pow(2, aRaw);
-            const safeC = Math.min(Math.max(c, 0), 0.999);
-            const deadzone = safeC / b;
-            const maxT = 1.0 / b;
-            const f = (x) => {
-                if (x <= deadzone) return 0;
-                if (x >= maxT) return 1;
-                return Math.pow((b * x - safeC) / (1 - safeC), a);
-            };
-            ctx.clearRect(0, 0, w, h);
-            // グリッド
-            ctx.strokeStyle = '#eee';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            for (let i = 1; i < 10; i++) {
-                ctx.moveTo(i * w / 10, 0); ctx.lineTo(i * w / 10, h);
-                ctx.moveTo(0, i * h / 10); ctx.lineTo(w, i * h / 10);
-            }
-            ctx.stroke();
-            // 軸ラベル
-            ctx.fillStyle = '#888';
-            ctx.font = '10px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText('入力', w / 2, h - 2);
-            ctx.save();
-            ctx.translate(10, h / 2);
-            ctx.rotate(-Math.PI / 2);
-            ctx.fillText('出力', 0, 0);
-            ctx.restore();
-            // 曲線
-            ctx.strokeStyle = '#007BFF';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            for (let px = 0; px <= w; px++) {
-                const x = px / w;
-                const py = h - f(x) * h;
-                if (px === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-            }
-            ctx.stroke();
-            // ノード
-            ctx.fillStyle = '#FF3366';
-            ctx.beginPath(); ctx.arc(deadzone * w, h, 3, 0, Math.PI * 2); ctx.fill();
-            ctx.beginPath(); ctx.arc(maxT * w, 0, 3, 0, Math.PI * 2); ctx.fill();
-        };
         ['axp_config_form_pressureA', 'axp_config_form_pressureB', 'axp_config_form_pressureC'].forEach((id) => {
             const form = document.getElementById(id);
             if (!form) return;
-            form.addEventListener('input', drawPressureCurve);
+            form.addEventListener('input', () => this.drawPressureCurve());
         });
         // 初回描画 (設定ロード後の値を反映するため少し遅延)
-        setTimeout(drawPressureCurve, 0);
+        setTimeout(() => this.drawPressureCurve(), 0);
 
         // ハライ/ハネ チューニング
-        const flickIds = [
-            ['axp_config_form_flickThreshold', 'thresholdBase', 100],
-            ['axp_config_form_flickFactor',    'taperFactor',     1],
-            ['axp_config_form_flickMinRatio',  'minTaperRatio',  10],
-            ['axp_config_form_flickMaxRatio',  'maxTaperRatio',  10],
-            ['axp_config_form_flickExtrap',    'extrapRatio',   100],
-        ];
-        for (const [formId, prop, divisor] of flickIds) {
+        for (const [formId, prop, divisor] of FLICK_TAPER_FORMS) {
             const form = document.getElementById(formId);
             if (form && form.volume) {
                 form.volume.addEventListener('input', () => {
@@ -669,21 +678,6 @@ export class ConfigSystem {
                 });
             }
         }
-        const syncFlickSliders = () => {
-            const pen = this.axpObj.penSystem.penObj[this.axpObj.penSystem.pen_mode];
-            if (!pen || !pen.flickTaper) return;
-            const ft = pen.flickTaper;
-            const setFormValue = (id, raw, display) => {
-                const f = document.getElementById(id);
-                if (f) { f.volume.value = raw; f.result.value = display; }
-            };
-            setFormValue('axp_config_form_flickThreshold', ft.thresholdBase * 100, ft.thresholdBase);
-            setFormValue('axp_config_form_flickFactor', ft.taperFactor, ft.taperFactor);
-            setFormValue('axp_config_form_flickMinRatio', ft.minTaperRatio * 10, ft.minTaperRatio);
-            setFormValue('axp_config_form_flickMaxRatio', ft.maxTaperRatio * 10, ft.maxTaperRatio);
-            setFormValue('axp_config_form_flickExtrap', ft.extrapRatio * 100, ft.extrapRatio * 100);
-        };
-        setTimeout(syncFlickSliders, 0);
 
         document.getElementById('axp_config_button_resetFlick').addEventListener('click', () => {
             confirmExPromise('ハライ/ハネの設定をデフォルトに戻します。\nよろしいですか？')
@@ -696,7 +690,7 @@ export class ConfigSystem {
                         pen.flickTaper.maxTaperRatio = 7.0;
                         pen.flickTaper.extrapRatio = 0.15;
                     }
-                    syncFlickSliders();
+                    this.syncFlickSliders();
                 }).catch(() => {});
         });
 
@@ -1134,6 +1128,87 @@ export class ConfigSystem {
                     // 処理なし
                 });
         }
+        // 全設定のファイル保存
+        document.getElementById('axp_config_button_saveAllConfig').addEventListener('click', () => {
+            // 一度も変更していない項目（＝コンフィグオブジェクトに未登録の初期値）もファイルに含める
+            // ※コンフィグオブジェクト自体は変更しない
+            const exportMap = new Map(this.configObj);
+            this.collectConfigFromDOM(exportMap);
+            const saveObj = {
+                name: CONFIG_FILE_MAGIC,
+                formatVersion: CONFIG_FILE_FORMAT_VERSION,
+                appVersion: PACKAGE_VERSION,
+                exportedAt: new Date().toISOString(),
+                // Mapはそのままではjson化できないため、プレーンオブジェクトに変換する
+                // ※設定値は全てこのMapに集約されているため、設定項目が増えてもここへの追記は不要
+                config: Object.fromEntries(exportMap),
+                // カラーパレットはコンフィグオブジェクトとは別のストアに保存されているため、個別に出力する
+                palette: {
+                    column: this.axpObj.colorPaletteSystem.currentPalette.column,
+                    colors: [...this.axpObj.colorPaletteSystem.currentPalette.palette],
+                },
+            };
+            const filename = "ap_config" + dispDate(new Date(), 'YYYYMMDD_hhmmss') + ".json";
+            const blob = new Blob([JSON.stringify(saveObj, null, 2)], { type: 'application/json' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.href = url;
+            link.download = filename;
+            link.click();
+            // 使い終わったオブジェクトURLを解放する
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        });
+        // 全設定のファイル読込
+        document.getElementById('axp_config_button_loadAllConfig').onclick = () => {
+            // ２度同じファイルを選択したとき、onchangeが発火しない不具合を回避するため値を初期化する
+            document.getElementById('axp_config_file_loadAllConfig').value = '';
+            // ファイルオープンダイアログを開く
+            document.getElementById('axp_config_file_loadAllConfig').click();
+        }
+        //ダイアログでファイルが選択された時
+        document.getElementById('axp_config_file_loadAllConfig').onchange = (e) => {
+            const file = e.target.files;
+            // ファイルが選択されていない場合（キャンセル）
+            if (file.length === 0) return;
+            const reader = new FileReader();
+            reader.readAsText(file[0]);
+            reader.onload = () => {
+                let json;
+                try {
+                    json = JSON.parse(reader.result);
+                } catch {
+                    alert('AXNOS Paintの設定ファイルではありません。');
+                    return;
+                }
+                if (json === null || typeof json !== 'object'
+                    || json.name !== CONFIG_FILE_MAGIC
+                    || json.config === null || typeof json.config !== 'object'
+                    || Array.isArray(json.config)) {
+                    alert('AXNOS Paintの設定ファイルではありません。');
+                    return;
+                }
+                if (Number(json.formatVersion) > CONFIG_FILE_FORMAT_VERSION) {
+                    alert('この設定ファイルは、より新しいバージョンのAXNOS Paintで作成されています。\n読み込むことができません。');
+                    return;
+                }
+                // 確認ダイアログ表示
+                confirmExPromise('設定ファイルを読み込み、全ての設定を上書きします。\nよろしいですか？\n（※この処理はアンドゥできません）')
+                    .then(() => {
+                        // ※OK時の処理
+                        // ここで発生した例外はキャンセル用のcatchに吸収され無言で失われるため、この場で処理する
+                        try {
+                            this.importAllConfig(json);
+                        } catch (error) {
+                            console.log(error);
+                            alert(`エラー：設定ファイルの読み込みに失敗しました。\n${error}`);
+                        }
+                    })
+                    .catch(() => {
+                        // ※Cancel時の処理
+                        // 処理なし
+                    });
+            }
+        }
         // デバッグ情報表示チェックボックス
         document.getElementById('axp_config_checkbox_useDebugMode').onchange = (e) => {
             this.axpObj.debugLog.isDebugMode = e.target.checked;
@@ -1540,6 +1615,200 @@ export class ConfigSystem {
     getConfig(key) {
         return this.configObj.get(key);
     }
+    // 筆圧カーブのプレビューを、現在のスライダーの値から描画する
+    // ※スライダー操作時のinputイベントのほか、設定復元後にも呼び出す必要がある
+    //   （プログラムから値を代入した場合はinputイベントが発生しないため）
+    drawPressureCurve() {
+        const canvas = document.getElementById('axp_config_canvas_pressureCurve');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const w = canvas.width;
+        const h = canvas.height;
+        const aRaw = parseFloat(document.getElementById('axp_config_form_pressureA').volume.value);
+        const b = parseFloat(document.getElementById('axp_config_form_pressureB').volume.value);
+        const c = parseFloat(document.getElementById('axp_config_form_pressureC').volume.value);
+        const a = Math.pow(2, aRaw);
+        const safeC = Math.min(Math.max(c, 0), 0.999);
+        const deadzone = safeC / b;
+        const maxT = 1.0 / b;
+        const f = (x) => {
+            if (x <= deadzone) return 0;
+            if (x >= maxT) return 1;
+            return Math.pow((b * x - safeC) / (1 - safeC), a);
+        };
+        ctx.clearRect(0, 0, w, h);
+        // グリッド
+        ctx.strokeStyle = '#eee';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let i = 1; i < 10; i++) {
+            ctx.moveTo(i * w / 10, 0); ctx.lineTo(i * w / 10, h);
+            ctx.moveTo(0, i * h / 10); ctx.lineTo(w, i * h / 10);
+        }
+        ctx.stroke();
+        // 軸ラベル
+        ctx.fillStyle = '#888';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('入力', w / 2, h - 2);
+        ctx.save();
+        ctx.translate(10, h / 2);
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillText('出力', 0, 0);
+        ctx.restore();
+        // 曲線
+        ctx.strokeStyle = '#007BFF';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let px = 0; px <= w; px++) {
+            const x = px / w;
+            const py = h - f(x) * h;
+            if (px === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+        // ノード
+        ctx.fillStyle = '#FF3366';
+        ctx.beginPath(); ctx.arc(deadzone * w, h, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(maxT * w, 0, 3, 0, Math.PI * 2); ctx.fill();
+    }
+    // ハライ/ハネのスライダー表示を、現在のペンの設定値から更新する
+    // ※設定復元後にも呼び出す必要がある（呼び出し元の注意点はdrawPressureCurveと同じ）
+    syncFlickSliders() {
+        const pen = this.axpObj.penSystem.penObj[this.axpObj.penSystem.pen_mode];
+        if (!pen || !pen.flickTaper) return;
+        const ft = pen.flickTaper;
+        for (const [formId, prop, divisor, displayIsRaw] of FLICK_TAPER_FORMS) {
+            const form = document.getElementById(formId);
+            if (!form) continue;
+            // 浮動小数点の誤差が表示に出ないよう丸める（例：0.15×100＝15.000000000000002）
+            const raw = Math.round(ft[prop] * divisor * 1000) / 1000;
+            form.volume.value = raw;
+            form.result.value = displayIsRaw ? raw : ft[prop];
+        }
+    }
+    // ハライ/ハネのスライダーの値を、現在のペンの設定値へ反映する
+    // 起動時の復元では、値を代入した時点ではまだinputイベントのハンドラが登録されていないため、
+    // イベント経由ではペンに反映されない。設定復元後にこのメソッドを明示的に呼び出す必要がある。
+    applyFlickConfigToPen() {
+        const pen = this.axpObj.penSystem.penObj[this.axpObj.penSystem.pen_mode];
+        if (!pen || !pen.flickTaper) return;
+        for (const [formId, prop, divisor] of FLICK_TAPER_FORMS) {
+            const form = document.getElementById(formId);
+            if (!form || !form.volume) continue;
+            const value = Number(form.volume.value);
+            if (isNaN(value)) continue;
+            pen.flickTaper[prop] = value / divisor;
+        }
+    }
+    // 画面上の設定項目('axpc_SAVE'指定の要素)のうち、対象のMapに存在しないものを現在の値で補う
+    // ・エクスポート時：一度も変更していない項目（＝Mapに未登録の初期値）もファイルに含めるために使用する
+    // ・インポート時  ：ファイルに含まれていなかった項目の値が、画面表示と食い違ったまま保存されるのを防ぐために使用する
+    // ※値の取得規則は、値変更時の保存処理(startEvent内)と同一に保つこと
+    collectConfigFromDOM(target = this.configObj) {
+        const elems_config = document.getElementsByClassName('axpc_SAVE');
+        for (const item of elems_config) {
+            let key;
+            let value;
+            switch (item.type) {
+                case 'checkbox':
+                    key = `CHECK_${item.id}`;
+                    value = item.checked;
+                    break;
+                case 'number':
+                    key = `VALUE_${item.id}`;
+                    value = Number(item.value);
+                    break;
+                case 'select-one':
+                    key = `SELCT_${item.id}`;
+                    value = item.value;
+                    break;
+                default:
+                    // レンジスライダーとラジオボタンは、入力要素ではなくそれを囲むform要素に
+                    // 'axpc_SAVE'が指定されている（form要素のtypeはundefinedになる）
+                    if (item.classList.contains('axpc_range')) {
+                        // 値は内側のレンジ入力(name="volume")が持つ
+                        key = `RANGE_${item.id}`;
+                        value = item.volume ? item.volume.value : undefined;
+                    } else if (item.classList.contains('axpc_radio')) {
+                        key = `RADIO_${item.id}`;
+                        // 選択中のラジオボタンの値
+                        const checked = item.querySelector('input:checked');
+                        value = checked ? checked.value : undefined;
+                    }
+                    break;
+            }
+            if (key === undefined || value === undefined) continue;
+            // 既に値がある項目は上書きしない（復元された値を優先する）
+            if (target.has(key)) continue;
+            target.set(key, value);
+        }
+    }
+    // 設定ファイルのパレット情報を検証して取り出す
+    // 戻り値 : { column, colors } / 不正な場合はnull
+    parsePaletteData(objPalette) {
+        if (objPalette === null || typeof objPalette !== 'object') return null;
+        if (!Array.isArray(objPalette.colors) || objPalette.colors.length === 0) return null;
+        const COLOR_MAX = this.axpObj.colorPaletteSystem.CONST.COLOR_MAX;
+        const colors = [];
+        for (const code of objPalette.colors) {
+            // 最大パレット数を超えるデータは無視する
+            if (colors.length >= COLOR_MAX) break;
+            if (typeof code !== 'string' || !isColor(code)) return null;
+            colors.push(code);
+        }
+        if (colors.length === 0) return null;
+        // ※0:折り返し無し
+        let column = Number(objPalette.column);
+        if (isNaN(column) || !inRange(column, 0, COLOR_MAX)) {
+            column = 5;
+        }
+        return { column: column, colors: colors };
+    }
+    // 設定ファイル（json）の取り込み
+    importAllConfig(json) {
+        // ツールウィンドウの最小化状態は「最小化する」方向にしか復元されないため、事前に全て解除しておく
+        // （単一ウィンドウモードの解除処理が、ランチャーの表示と全ウィンドウの最小化解除を兼ねている）
+        this.axpObj.launcher.setSingleWindowMode(false, true);
+        // ファイルに含まれないキーが残らないよう、復元前に現在のコンフィグを破棄する
+        this.configObj.clear();
+        // 起動時と同じ復元処理を通す（未知のキー・不正な値はここで除去される）
+        this.restoreConfig(new Map(Object.entries(json.config)));
+        // 画面上には存在するがファイルに含まれていなかった項目を、現在の画面の値で補う
+        // （コンフィグオブジェクトと画面表示が食い違ったまま保存されるのを防ぐ）
+        this.collectConfigFromDOM();
+
+        // カラーパレット
+        const palette = this.parsePaletteData(json.palette);
+        // パレットの列数(PLTCO)は画面上の設定項目ではないため、collectConfigFromDOMでは補われない。
+        // 優先順位：ファイルのconfig(PLTCO) → ファイルのpalette.column → 現在の画面の列数
+        // ※どれも設定しないままだとコンフィグから列数が失われ、次回起動時に既定値へ戻ってしまう
+        if (typeof this.getConfig('PLTCO') !== 'number') {
+            const column = palette ? palette.column : this.axpObj.colorPaletteSystem.currentPalette.column;
+            this.axpObj.colorPaletteSystem.currentPalette.column = column;
+            this.configObj.set('PLTCO', column);
+        }
+        if (palette) {
+            this.axpObj.colorPaletteSystem.setPaletteArray(palette.colors);
+            // DBへ保存
+            this.axpObj.saveSystem.save_palette(palette.colors);
+        }
+
+        // コンフィグオブジェクトをDBに保存
+        this.saveConfig();
+
+        // 復元した設定を各システムへ反映
+        this.axpObj.applyConfigToRuntime();
+        // 以降は起動時には不要な（インポート時のみ必要な）反映処理
+        // カラータグの表示更新（起動時は表示要素がまだ生成されていないため、ここでのみ行う）
+        this.axpObj.layerSystem.updateAllColorTag();
+        // 単一ウィンドウモード
+        // ※解除は復元前に済ませてある。ここで解除を行うと最小化状態の復元が打ち消されるため呼ばない
+        if (document.getElementById('axp_config_checkbox_singleWindowMode').checked) {
+            this.axpObj.launcher.setSingleWindowMode(true, true);
+        }
+
+        alert('設定ファイルを正常に読み込みました。');
+    }
     // ユーザー設定の復元
     restoreConfig(map) {
         // 共通処理
@@ -1659,6 +1928,12 @@ export class ConfigSystem {
             // データタイプ
             const dataType = key.substring(0, 5);
             const elememtId = key.substring(6);
+            // 未知の接頭辞・型の合わない値をここで破棄する
+            // （設定ファイルのインポートにより、外部から任意の値が渡りうるため）
+            if (!isValidConfigType(dataType, value)) {
+                console.log('無効なconfig:', key, value);
+                return;
+            }
             switch (dataType) {
                 // レンジスライダー（ペンツールを除く）
                 case 'RANGE':
@@ -1692,8 +1967,9 @@ export class ConfigSystem {
                         isAvailable = false;
                     }
                     break;
-                // テキストボックスなど（valueの単純代入で処理できるもの）
+                // テキストボックス、セレクトボックスなど（valueの単純代入で処理できるもの）
                 case 'VALUE':
+                case 'SELCT':
                     if (document.getElementById(elememtId)) {
                         document.getElementById(elememtId).value = value;
                     } else {
@@ -1711,13 +1987,28 @@ export class ConfigSystem {
                     break;
                 // 拡大率テーブル
                 case 'SCALE':
-                    this.axpObj.currentScaleTable = value;
+                    // 画面から拡大率を追加するときと同じ条件で検証する。
+                    // 空配列では拡大率を選択できなくなり、範囲外の値は拡大操作でそのまま
+                    // 適用されてしまう（zoomIn/zoomOutはテーブルの値を直接代入するため）。
+                    if (value.length > 0
+                        && value.length <= this.axpObj.CONST.SCALE_TABLE_MAX
+                        && value.every((item) => typeof item === 'number'
+                            && inRange(item, this.axpObj.CONST.SCALE_MIN, this.axpObj.CONST.SCALE_MAX))) {
+                        this.axpObj.currentScaleTable = value;
+                    } else {
+                        isAvailable = false;
+                    }
                     break;
                 // キャンバスサイズ履歴
                 case 'CHIST':
-                    this.configCanvasSizeHistory = value;
-                    // 表示更新
-                    this.updateCanvasSizeHistory();
+                    // 「幅,高さ」形式の文字列以外が混ざっていると、表示更新時に例外が発生する
+                    if (value.every((item) => typeof item === 'string' && /^\d+,\d+$/.test(item))) {
+                        this.configCanvasSizeHistory = value;
+                        // 表示更新
+                        this.updateCanvasSizeHistory();
+                    } else {
+                        isAvailable = false;
+                    }
                     break;
                 // ツールウィンドウ座標
                 case 'WDPOS':
@@ -1814,7 +2105,10 @@ export class ConfigSystem {
                     break;
                 // カラータグリスト
                 case 'COTAG':
-                    this.axpObj.layerSystem.resetColorTagList(value);
+                    if (!this.axpObj.layerSystem.resetColorTagList(value)) {
+                        // 不正なリストの場合、データを無効とする（デフォルト値が使用される）
+                        isAvailable = false;
+                    }
                     break;
                 // 太さクイックボタン・混色ペンプリセット (値はペンツール側で解釈)
                 case 'QSIZE':
@@ -1836,15 +2130,9 @@ export class ConfigSystem {
                 console.log('無効なconfig:', key, value);
             }
         })
-        // ハライスライダーの復元値をペンオブジェクトに反映
-        for (const id of [
-            'axp_config_form_flickThreshold', 'axp_config_form_flickFactor',
-            'axp_config_form_flickMinRatio', 'axp_config_form_flickMaxRatio',
-            'axp_config_form_flickExtrap',
-        ]) {
-            const form = document.getElementById(id);
-            if (form && form.volume) form.volume.dispatchEvent(new Event('input'));
-        }
+        // ※ハライスライダーの復元値をペンオブジェクトへ反映する処理は
+        //   applyConfigToRuntime の applyFlickConfigToPen で行う。
+        //   ここでinputイベントを発行する方法では、起動時はまだハンドラが未登録のため反映されない。
     }
     /**
      * 設定のカラーパレット表示用HTMLを、カラーパレット配列を基に生成する

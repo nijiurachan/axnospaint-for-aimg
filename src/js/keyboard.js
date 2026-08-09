@@ -8,25 +8,27 @@ export class KeyboardSystem {
     // 初期化
     init() {
     }
-    startEvent() {
-        const readModKeyConfig = () => {
-            const get = (id, def) => {
-                const el = document.getElementById(id);
-                return el ? el.value : def;
-            };
-            return {
-                ' ':       get('axp_config_select_modkey_space', 'hand'),
-                'SHIFT':   get('axp_config_select_modkey_shift', 'line'),
-                'CONTROL': get('axp_config_select_modkey_ctrl',  'spuit'),
-                'ALT':     get('axp_config_select_modkey_alt',   'eraser'),
-            };
+    // 修飾キーの割り当てを設定画面から読み直す
+    // ※プログラムから値を復元した場合はchangeイベントが発生しないため、明示的に呼び出す必要がある
+    refreshModKeyConfig() {
+        const get = (id, def) => {
+            const el = document.getElementById(id);
+            return el ? el.value : def;
         };
-        this.modKeyActions = readModKeyConfig();
+        this.modKeyActions = {
+            ' ':       get('axp_config_select_modkey_space', 'hand'),
+            'SHIFT':   get('axp_config_select_modkey_shift', 'line'),
+            'CONTROL': get('axp_config_select_modkey_ctrl',  'spuit'),
+            'ALT':     get('axp_config_select_modkey_alt',   'eraser'),
+        };
+    }
+    startEvent() {
+        this.refreshModKeyConfig();
 
         for (const id of ['axp_config_select_modkey_space', 'axp_config_select_modkey_shift',
                            'axp_config_select_modkey_ctrl', 'axp_config_select_modkey_alt']) {
             const el = document.getElementById(id);
-            if (el) el.addEventListener('change', () => { this.modKeyActions = readModKeyConfig(); });
+            if (el) el.addEventListener('change', () => { this.refreshModKeyConfig(); });
         }
 
         this.activeModifiers = {};

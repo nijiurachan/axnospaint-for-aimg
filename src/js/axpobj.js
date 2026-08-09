@@ -2476,32 +2476,9 @@ export class AXPObj {
             // 初期レイヤー作成（※合成モード表示の設定があるため、設定復元完了後に行う必要がある）
             this.layerSystem.newLayer();
 
-            // アンドゥ使用可能最大数
-            this.undo_max = document.getElementById('axp_config_form_undoMaxValue').result.value;
-            // カスタムボタンツールウィンドウ表示切替
-            this.dispCustomButton();
-            // 色作成ツールウィンドウ表示切替
-            this.colorMakerSystem.updateMakeColorType();
-            //console.log('3:パレット作成');
-            this.colorPaletteSystem.createPalette();
+            // 復元したユーザー設定を各システムへ反映
+            this.applyConfigToRuntime();
 
-            // 設定に拡大率テーブルを作成
-            this.configSystem.createConfigScaleTable(this.currentScaleTable);
-            // キーカスタマイズに拡大率テーブルを反映
-            this.configSystem.updateKeyCustomizationScaleTable(this.currentScaleTable);
-            // キーカスタマイズの折りたたみ
-            this.configSystem.switchNofuncKeytable();
-            this.configSystem.updateShortcutMessage();
-            // キャンバスぼかし
-            this.configSystem.set_canvas_antialiasing();
-            // 座標表示
-            this.configSystem.set_display_position();
-            // 長押しスポイト
-            this.configSystem.set_longtap_use();
-            // ツールウィンドウ位置初期化
-            this.dragWindow.initPosition();
-            // ユーザー設定が復元された後のペンツールの再描画
-            this.penSystem.changePenMode();
             // 初回起動かつモバイル端末の場合、単一ウィンドウモードを強制設定
             if (this.ENV.isFirstLaunch && this.ENV.isMobileWidth) {
                 document.getElementById('axp_config_checkbox_singleWindowMode').checked = true;
@@ -2545,6 +2522,51 @@ export class AXPObj {
                 this.exTool.startEvent();
             }
         })();
+    }
+    // 復元されたユーザー設定を各システムに反映する
+    // 起動時と設定ファイルのインポート時の共通処理。
+    // ※設定項目を追加した際、値を各システムへ反映する処理が必要な場合は必ずここに追記すること。
+    //   ここに書き忘れると、インポートしても設定が反映されない（かつ何のエラーも出ない）状態になる。
+    applyConfigToRuntime() {
+        // アンドゥ使用可能最大数
+        this.undo_max = document.getElementById('axp_config_form_undoMaxValue').result.value;
+        // カスタムボタンツールウィンドウ表示切替
+        this.dispCustomButton();
+        // 色作成ツールウィンドウ表示切替
+        this.colorMakerSystem.updateMakeColorType();
+        // カラーパレット
+        this.colorPaletteSystem.createPalette();
+        // 設定タブ内のカラーパレット表示
+        this.configSystem.dispPalettebox(
+            document.getElementById('axp_config_div_paletteBox'), this.colorPaletteSystem.currentPalette);
+
+        // 設定に拡大率テーブルを作成
+        this.configSystem.createConfigScaleTable(this.currentScaleTable);
+        // キーカスタマイズに拡大率テーブルを反映
+        this.configSystem.updateKeyCustomizationScaleTable(this.currentScaleTable);
+        // キーカスタマイズの折りたたみ
+        this.configSystem.switchNofuncKeytable();
+        this.configSystem.updateShortcutMessage();
+        // 修飾キーの割り当て（プログラムからの復元ではchangeイベントが発生しないため明示的に再読込する）
+        this.keyboardSystem.refreshModKeyConfig();
+        // キャンバスぼかし
+        this.configSystem.set_canvas_antialiasing();
+        // 座標表示
+        this.configSystem.set_display_position();
+        // 長押しスポイト
+        this.configSystem.set_longtap_use();
+        // ツールウィンドウ位置初期化
+        this.dragWindow.initPosition();
+        // 混色ペンのプリセット（ペンツールの再描画より先に行う必要がある）
+        this.penSystem.restoreDiffusionPresets();
+        // ユーザー設定が復元された後のペンツールの再描画
+        this.penSystem.changePenMode();
+        // 筆圧カーブのプレビュー
+        this.configSystem.drawPressureCurve();
+        // ハライ/ハネ（現在のペンを参照するため、ペンモード確定後に行う）
+        // 復元したスライダーの値をペンへ反映し、その結果をスライダー表示へ戻す
+        this.configSystem.applyFlickConfigToPen();
+        this.configSystem.syncFlickSliders();
     }
     config(id) {
         let element = document.getElementById(id);

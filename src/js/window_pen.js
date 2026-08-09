@@ -467,30 +467,6 @@ export class PenSystem extends ToolWindow {
             }
         );
 
-        // 混色ペンのプリセット（保存値の復元）
-        for (let i = 0; i < this.diffusionPresets.length; i++) {
-            const saved = this.axpObj.configSystem.getConfig('DPRST_' + i);
-            if (typeof saved === 'string') {
-                try {
-                    const obj = JSON.parse(saved);
-                    const clamp = (v) => Math.min(100, Math.max(0, Number(v) || 0));
-                    if (typeof obj.name === 'string' && obj.name.trim() !== '') {
-                        this.diffusionPresets[i] = {
-                            name: obj.name.substring(0, 20),
-                            hardness: clamp(obj.hardness),
-                            diffusion: clamp(obj.diffusion),
-                            drag: clamp(obj.drag),
-                        };
-                    }
-                } catch {
-                    // 破損データは既定値のまま
-                }
-            }
-        }
-        // 詳細設定の開閉状態の復元
-        const savedDetailOpen = this.axpObj.configSystem.getConfig('DPRST_open');
-        this.diffusionDetailOpen = (savedDetailOpen === true || savedDetailOpen === 'true');
-
         // 混色ペンのプリセットボタン
         // シングルクリック → 0.3秒待機 → 再クリックなし → プリセット反映
         // 0.3秒以内の再クリック → 反映せず編集 (名前変更＋現在値で上書き保存)。
@@ -876,6 +852,32 @@ export class PenSystem extends ToolWindow {
         this.axpObj.msg('@PEN0014');
         this.previewPenSize();
         this.updateDiffusionPresetHighlight();
+    }
+    // 混色ペンのプリセットと詳細設定開閉状態を、保存値から復元する
+    // ※DOMに依存しないため、起動時・設定インポート時のどちらからでも呼び出せる
+    restoreDiffusionPresets() {
+        for (let i = 0; i < this.diffusionPresets.length; i++) {
+            const saved = this.axpObj.configSystem.getConfig('DPRST_' + i);
+            if (typeof saved === 'string') {
+                try {
+                    const obj = JSON.parse(saved);
+                    const clamp = (v) => Math.min(100, Math.max(0, Number(v) || 0));
+                    if (typeof obj.name === 'string' && obj.name.trim() !== '') {
+                        this.diffusionPresets[i] = {
+                            name: obj.name.substring(0, 20),
+                            hardness: clamp(obj.hardness),
+                            diffusion: clamp(obj.diffusion),
+                            drag: clamp(obj.drag),
+                        };
+                    }
+                } catch {
+                    // 破損データは既定値のまま
+                }
+            }
+        }
+        // 詳細設定の開閉状態の復元
+        const savedDetailOpen = this.axpObj.configSystem.getConfig('DPRST_open');
+        this.diffusionDetailOpen = (savedDetailOpen === true || savedDetailOpen === 'true');
     }
     // 混色ペンのプリセット表示（ラベル・反映中表示・開閉ボタンラベル）の一括更新
     updateDiffusionPresetDisplay() {

@@ -7,7 +7,8 @@
     top: 0;
     height: 100%;
     width: 100%;
-    overflow: auto;
+    /* スクロールは内側のスロット一覧のみで行う（スロット数が多くても閉じるボタンが画面外に出ないようにするため） */
+    overflow: hidden;
     background-color: rgba(0, 0, 0, 0.5);
 }
 
@@ -20,6 +21,12 @@
     margin: 8px;
     padding: 8px;
     border-radius: 5px;
+    /* メッセージ・スロット一覧・閉じるボタンの縦積み */
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    /* margin(8px)の上下ぶんを差し引く */
+    max-height: calc(100% - 16px);
 }
 
 /* セーブスロットのHTMLを挿入するポイント */
@@ -29,8 +36,13 @@
     display: flex;
     justify-content: normal;
     flex-wrap: wrap;
+    /* 折り返した行が縦方向に引き伸ばされるのを防ぐ */
+    align-content: flex-start;
     padding: 8px;
     cursor: pointer;
+    /* 余った領域を占有し、あふれた分だけスクロールする */
+    flex: 1 1 auto;
+    overflow-y: auto;
 }
 
 /* 閉じるボタン */
@@ -39,13 +51,15 @@
     font-weight: bolder;
     font-size: 15px;
     width: 100%;
+    /* 常に最下部に固定する */
+    flex: 0 0 auto;
 }
 
 .axpc_saveload_saveSlot,
 .axpc_saveload_loadSlot {
     background-color: #ddd;
     width: 135px;
-    min-height: 180px;
+    min-height: 195px;
     border: solid 2px #000;
     border-radius: 10px;
     text-align: center;
@@ -61,6 +75,12 @@
 
 .axpc_saveload_loadSlot:hover {
     background-color: #ffa;
+}
+
+/* スロット番号 */
+.axpc_saveload_slotNo {
+    color: #444;
+    font-weight: normal;
 }
 
 .axpc_saveload_thumbnall {

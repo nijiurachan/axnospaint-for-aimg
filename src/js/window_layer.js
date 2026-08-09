@@ -527,7 +527,20 @@ export class LayerSystem extends ToolWindow {
         return newName;
     }
     // カラータグリスト配列をデフォルト値に初期化
+    // 戻り値 : 復元に成功した場合true（不正なリストが指定された場合はfalseを返しデフォルト値を使用する）
     resetColorTagList(list = null) {
+        let isAvailable = true;
+        // 設定ファイルのインポートにより、外部から任意の値が渡りうるためリストの妥当性を検証する
+        // （要素数がデフォルトと異なると、タグ表示の更新時に添字アクセスで例外が発生する）
+        if (list !== null) {
+            if (!Array.isArray(list)
+                || list.length !== colorTagListDefault.length
+                || !list.every((item) => item !== null && typeof item === 'object' && typeof item.name === 'string')) {
+                console.log('無効なカラータグリスト:', list);
+                list = null;
+                isAvailable = false;
+            }
+        }
         // 引数にリスト指定あり（設定復元時）ならばリストを参照。無指定の場合デフォルトのリスト
         let referenceList = (list !== null) ? list : colorTagListDefault;
         this.colorTagList = [];
@@ -540,6 +553,7 @@ export class LayerSystem extends ToolWindow {
                 }
             );
         }
+        return isAvailable;
     }
     // カラータグを最新の状態に更新
     updateAllColorTag() {

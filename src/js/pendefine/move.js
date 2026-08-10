@@ -34,7 +34,8 @@ export class Move extends PenObj {
         // 描画開始時のイメージ記憶
         this.axpObj.layerSystem.save();
         this.axpObj.layerSystem.isStrokeActive = true;
-        this.axpObj.layerSystem.activateFastPath();
+        // 移動プレビューは draw へ自前で全面を描き上げるため、合成元として draw を渡す
+        this.axpObj.layerSystem.activateFastPath(this.CANVAS.draw);
         if (this.axpObj.layerSystem.compositeFastPathActive) {
             this.CANVAS.undoBase_ctx.putImageData(this.axpObj.layerSystem.load(), 0, 0);
         }

@@ -374,10 +374,12 @@ export class PenObj {
     end_common() {
         if (this.axpObj.layerSystem.isStrokeActive) {
             if (this.axpObj.layerSystem.compositeFastPathActive && !this.axpObj.isDrawCancel) {
-                // fast path のストローク結果は fastStroke に合成されている。
-                // GPU からの読み戻しになるが、ストローク終了時の 1 回のみ
+                // fast path のストローク結果は activateFastPath で指定した合成元に入っている。
+                // スタンプ系ペンは fastStroke (GPU 面)、なげなわ・移動は draw (CPU面)。
+                // fastStroke の場合は GPU からの読み戻しになるが、ストローク終了時の 1 回のみ
+                const strokeCtx = this.axpObj.layerSystem.strokeCanvasCtx ?? this.CANVAS.fastStroke_ctx;
                 this.axpObj.layerSystem.write(
-                    this.CANVAS.fastStroke_ctx.getImageData(0, 0, this.axpObj.x_size, this.axpObj.y_size)
+                    strokeCtx.getImageData(0, 0, this.axpObj.x_size, this.axpObj.y_size)
                 );
             }
             this.axpObj.layerSystem.isStrokeActive = false;

@@ -150,7 +150,8 @@ export class Nagenawa extends PenObj {
             this.set_modeflag();
             this.axpObj.layerSystem.save();
             this.axpObj.layerSystem.isStrokeActive = true;
-            this.axpObj.layerSystem.activateFastPath();
+            // 選択線・変形プレビューは draw へ自前で全面を描き上げるため、合成元として draw を渡す
+            this.axpObj.layerSystem.activateFastPath(this.CANVAS.draw);
             if (this.axpObj.layerSystem.compositeFastPathActive) {
                 this.CANVAS.undoBase_ctx.putImageData(this.axpObj.layerSystem.load(), 0, 0);
             }
@@ -222,10 +223,12 @@ export class Nagenawa extends PenObj {
         const h = this.axpObj.y_size;
 
         ctx.clearRect(0, 0, w, h);
+        // 直前のペンが draw_ctx に残した合成モード・不透明度・ぼかしを引き継がない
+        // （消しゴム直後などに点線が destination-out で描かれるのを防ぐ）
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
+        ctx.shadowBlur = 0;
         if (this.axpObj.layerSystem.compositeFastPathActive) {
-            ctx.globalCompositeOperation = 'source-over';
-            ctx.globalAlpha = 1;
-            ctx.shadowBlur = 0;
             ctx.drawImage(this.CANVAS.undoBase, 0, 0);
         } else {
             ctx.putImageData(this.axpObj.layerSystem.load(), 0, 0);

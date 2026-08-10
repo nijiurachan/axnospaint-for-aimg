@@ -1474,7 +1474,12 @@ export class LayerSystem extends ToolWindow {
             }
         }
     }
-    activateFastPath() {
+    // ストローク中の高速合成を有効化する。
+    // strokeSource はストローク結果が入るキャンバス。省略時はスタンプ系ペン用の
+    // GPU 面 (fastStroke) を使う。なげなわ・移動のように自前で全面を描き上げてから
+    // drawFast() を呼ぶツールは、自身の描画先 (penSystem.CANVAS.draw) を必ず渡すこと。
+    // 渡し忘れると drawFast() が誰も書いていない面を合成し、画面に何も出なくなる。
+    activateFastPath(strokeSource = null) {
         const currentIdx = this.getLayerIndex(this.currentLayer.dataset.id);
         const item = this.layerObj[currentIdx];
         if (item.mode === 'source-atop') {
@@ -1493,14 +1498,17 @@ export class LayerSystem extends ToolWindow {
             this.CANVAS.compositeAboveCtx,
             0, currentIdx - 1
         );
-        // ストローク合成は fast path 専用の GPU 面 (fastStroke) で行う。
+        // 既定のストローク合成元は fast path 専用の GPU 面 (fastStroke)。
         // draw (willReadFrequently=CPU面) を使うと毎コミットに CPU⇄GPU 転送が生じる
-        this.strokeCanvas = this.axpObj.penSystem.CANVAS.fastStroke;
+        this.strokeCanvas = strokeSource ?? this.axpObj.penSystem.CANVAS.fastStroke;
+        // ストローク終了時の読み戻し (PenObj.end_common) 先として保持する
+        this.strokeCanvasCtx = this.strokeCanvas.getContext('2d');
         this.compositeFastPathActive = true;
     }
     deactivateFastPath() {
         this.compositeFastPathActive = false;
         this.strokeCanvas = null;
+        this.strokeCanvasCtx = null;
     }
     // ストローク中の画面再合成。
     // dirty ({x, y, w, h}) 指定時はその矩形だけを再合成する。矩形外は前回コミットの
